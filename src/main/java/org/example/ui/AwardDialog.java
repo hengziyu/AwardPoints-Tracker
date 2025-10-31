@@ -4,46 +4,31 @@ import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
-import javafx.scene.control.*;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
-import org.example.model.*;
+import org.example.image.ImageLoader;
+import org.example.image.ImageTransform;
+import org.example.model.Award;
+import org.example.model.Student;
+import org.example.model.StudentAwardRecord;
 import org.example.persistence.NewDataManager;
 import org.example.util.LoggerUtil;
 import org.slf4j.Logger;
-import org.example.image.ImageUtils;
-import org.example.image.ImageLoader;
-import org.example.image.ImageTransform;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 奖项对话框 (逻辑未改)
  */
 public class AwardDialog {
     private static final Logger LOGGER = LoggerUtil.getLogger(AwardDialog.class.getName());
-    private final Stage stage;
-    private final Student studentData;
-    private final List<Award> awards;
-    private final NewDataManager newDataManager;
-    private final AwardDialogListener listener;
-    private int currentAwardIndex = 0;
-    private Label awardLabel;
-    private Label indexLabel;
-    private ImageView imageView;
-    private StackPane imageContainer;
-    private Label loadingLabel;
-    private Button prevButton;
-    private Button nextButton;
-    private final Map<String, Button> categoryButtons = new HashMap<>();
-    private Image originalImage;
-    private Image nextPreloadedImage;
-    private Image prevPreloadedImage;
-    private boolean imageLoading = false;
-    private final ImageLoader imageLoader = new ImageLoader();
     private static final Map<String, Double> SCORE_MAP = new HashMap<>();
 
     static {
@@ -54,6 +39,26 @@ public class AwardDialog {
         SCORE_MAP.put("院", 0.2);
         SCORE_MAP.put("无", 0.0);
     }
+
+    private final Stage stage;
+    private final Student studentData;
+    private final List<Award> awards;
+    private final NewDataManager newDataManager;
+    private final AwardDialogListener listener;
+    private final Map<String, Button> categoryButtons = new HashMap<>();
+    private final ImageLoader imageLoader = new ImageLoader();
+    private int currentAwardIndex = 0;
+    private Label awardLabel;
+    private Label indexLabel;
+    private ImageView imageView;
+    private StackPane imageContainer;
+    private Label loadingLabel;
+    private Button prevButton;
+    private Button nextButton;
+    private Image originalImage;
+    private Image nextPreloadedImage;
+    private Image prevPreloadedImage;
+    private boolean imageLoading = false;
 
     public AwardDialog(Stage owner, Student studentData, NewDataManager newDataManager, AwardDialogListener listener) {
         this.studentData = studentData;

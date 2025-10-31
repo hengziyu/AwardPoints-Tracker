@@ -2,13 +2,19 @@ package org.example.build;
 
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.example.util.LoggerUtil;
 import org.slf4j.Logger;
 
-import java.nio.file.*;
-import java.io.*;
-import java.util.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 
 /**
  * 随机数据构建 (逻辑未改)
@@ -18,12 +24,16 @@ public class BuildNull {
     private static final int QUANTITY = 10;
     private static final int MAX_AWARDS = 20;
     private static final boolean RANDOM_AWARDS_COUNT = true;
-    private int dataRowOffset = 0;
     private static final String NULL_FILE = "null.xlsx";
-    private static final String PATH_FILE = "path_to_your_file.xlsx";
+    private static final String PATH_FILE = "Raw_Source.xlsx";
+    private final Random random = new Random();
+    private int dataRowOffset = 0;
     private Workbook workbook;
     private Sheet sheet;
-    private final Random random = new Random();
+
+    public static void main(String[] args) {
+        new BuildNull().build();
+    }
 
     private void detectHeaderOffset() {
         Row r0 = sheet.getRow(0);
@@ -219,10 +229,6 @@ public class BuildNull {
         } catch (IOException e) {
             LoggerUtil.logException(LOGGER, e, "保存工作簿失败");
         }
-    }
-
-    public static void main(String[] args) {
-        new BuildNull().build();
     }
 }
 

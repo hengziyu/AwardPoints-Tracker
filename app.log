@@ -265,3 +265,11 @@ Caused by: java.util.zip.ZipException: Unexpected record signature: 0xd2849280
 2025-10-31 21:27:43.244 DEBUG org.example.ui.AwardDialog - 学生=32407751754 奖项索引=18 标签=省市 变化=0.5
 2025-10-31 21:27:43.735 DEBUG org.example.ui.AwardDialog - 学生=32407751754 奖项索引=18 标签=国 变化=0.8
 2025-10-31 21:27:44.153 DEBUG org.example.ui.AwardDialog - 学生=32407751754 奖项索引=18 标签=证书 变化=0.2
+2025-10-31 22:00:12.864 DEBUG org.example.app.DataLoader - 使用随机数据构建源文件
+2025-10-31 22:00:13.670 DEBUG org.example.build.BuildNull - dataRowOffset=1
+2025-10-31 22:00:13.882 INFO  org.example.build.BuildNull - 构建完成: Raw_Source.xlsx
+2025-10-31 22:00:14.402 INFO  org.example.build.BuildList - BuildList: 汇总完成 -> Awards_Summary.xlsx
+2025-10-31 22:00:14.778 DEBUG org.example.startup.StartupIntegrityChecker - 文件存在性: summary=true newFile=true db=true
+2025-10-31 22:00:14.785 DEBUG org.example.startup.StartupIntegrityChecker - 已加载学生数量=10 累计奖项数量=161
+2025-10-31 22:00:14.786 DEBUG org.example.startup.StartupIntegrityChecker - 已存在记录学生数=0 其中已全部录入=0 (recordMap size可能 > 统计数)
+2025-10-31 22:00:14.786 INFO  org.example.startup.StartupIntegrityChecker - 启动完整性检查完成
