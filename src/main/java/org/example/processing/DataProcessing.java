@@ -36,13 +36,13 @@ public class DataProcessing {
             return list;
         }
         try (FileInputStream fis = new FileInputStream(f); Workbook wb = new XSSFWorkbook(fis)) {
-            Sheet sheet = wb.getSheet("Sheet1");
+            Sheet sheet = wb.getSheet(Config.SHEET_MAIN);
             if (sheet == null) return list;
             Row header = sheet.getRow(0);
             if (header == null) return list;
-            int colStudentId = findColumnIndex(header, "学号");
-            int colName = findColumnIndex(header, "姓名");
-            int colClazz = findColumnIndex(header, "班级");
+            int colStudentId = findColumnIndex(header, Config.COL_STUDENT_ID);
+            int colName = findColumnIndex(header, Config.COL_NAME);
+            int colClazz = findColumnIndex(header, Config.COL_CLASS);
             int colAwards = findColumnIndex(header, "奖项");
             for (int r = 1; r <= sheet.getLastRowNum(); r++) {
                 Row row = sheet.getRow(r);
@@ -72,13 +72,14 @@ public class DataProcessing {
         File f = new File(Config.NEW_FILE_PATH);
         if (!f.exists()) initNewFile();
         try (FileInputStream fis = new FileInputStream(f); Workbook wb = new XSSFWorkbook(fis)) {
-            Sheet sheet = wb.getSheet("Sheet1");
+            Sheet sheet = wb.getSheet(Config.SHEET_MAIN);
             if (sheet == null) return map;
             Row header = sheet.getRow(0);
             if (header == null) return map;
-            int colStudentId = findColumnIndex(header, "学号");
+            int colStudentId = findColumnIndex(header, Config.COL_STUDENT_ID);
             int[] awardCols = new int[50];
-            for (int i = 0; i < 50; i++) awardCols[i] = findColumnIndex(header, "奖项" + (i + 1));
+            for (int i = 0; i < 50; i++)
+                awardCols[i] = findColumnIndex(header, Config.COL_AWARD_LABEL_PREFIX + (i + 1));
             for (int r = 1; r <= sheet.getLastRowNum(); r++) {
                 Row row = sheet.getRow(r);
                 if (row == null) continue;
@@ -107,15 +108,15 @@ public class DataProcessing {
 
     private void initNewFile() {
         try (Workbook wb = new XSSFWorkbook()) {
-            Sheet sheet = wb.createSheet("Sheet1");
+            Sheet sheet = wb.createSheet(Config.SHEET_MAIN);
             Row header = sheet.createRow(0);
-            header.createCell(0).setCellValue("学号");
-            header.createCell(1).setCellValue("姓名");
-            header.createCell(2).setCellValue("班级");
-            header.createCell(3).setCellValue("证书总分");
-            header.createCell(4).setCellValue("奖项总分");
-            header.createCell(5).setCellValue("已录入奖项数");
-            for (int i = 0; i < 50; i++) header.createCell(6 + i).setCellValue("奖项" + (i + 1));
+            header.createCell(0).setCellValue(Config.COL_STUDENT_ID);
+            header.createCell(1).setCellValue(Config.COL_NAME);
+            header.createCell(2).setCellValue(Config.COL_CLASS);
+            header.createCell(3).setCellValue(Config.COL_CERT_TOTAL);
+            header.createCell(4).setCellValue(Config.COL_AWARD_TOTAL);
+            header.createCell(5).setCellValue(Config.COL_RECORDED_COUNT);
+            for (int i = 0; i < 50; i++) header.createCell(6 + i).setCellValue(Config.COL_AWARD_LABEL_PREFIX + (i + 1));
             try (FileOutputStream fos = new FileOutputStream(Config.NEW_FILE_PATH)) {
                 wb.write(fos);
             }
@@ -165,4 +166,3 @@ public class DataProcessing {
         return list;
     }
 }
-

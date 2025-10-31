@@ -273,3 +273,120 @@ Caused by: java.util.zip.ZipException: Unexpected record signature: 0xd2849280
 2025-10-31 22:00:14.785 DEBUG org.example.startup.StartupIntegrityChecker - 已加载学生数量=10 累计奖项数量=161
 2025-10-31 22:00:14.786 DEBUG org.example.startup.StartupIntegrityChecker - 已存在记录学生数=0 其中已全部录入=0 (recordMap size可能 > 统计数)
 2025-10-31 22:00:14.786 INFO  org.example.startup.StartupIntegrityChecker - 启动完整性检查完成
+2025-10-31 22:58:52.817 DEBUG org.example.app.DataLoader - 使用随机数据构建源文件
+2025-10-31 22:58:52.821 WARN  org.example.build.BuildNull - 模板文件缺失, 创建空工作簿替代。
+2025-10-31 22:58:53.921 DEBUG org.example.build.BuildNull - dataRowOffset=1
+2025-10-31 22:58:53.996 INFO  org.example.build.BuildNull - 构建完成: Raw_Source.xlsx
+2025-10-31 22:58:54.471 INFO  org.example.build.BuildList - BuildList: 汇总完成 -> Awards_Summary.xlsx
+2025-10-31 22:58:54.502 INFO  org.example.config.TemplateInitializer - 初始化模板成功
+2025-10-31 22:58:54.915 DEBUG org.example.startup.StartupIntegrityChecker - 文件存在性: summary=true newFile=true db=true
+2025-10-31 22:58:54.921 DEBUG org.example.startup.StartupIntegrityChecker - 已加载学生数量=10 累计奖项数量=108
+2025-10-31 22:58:54.922 DEBUG org.example.startup.StartupIntegrityChecker - 已存在记录学生数=0 其中已全部录入=0 (recordMap size可能 > 统计数)
+2025-10-31 22:58:54.922 INFO  org.example.startup.StartupIntegrityChecker - 启动完整性检查完成
+2025-10-31 22:59:03.692 ERROR org.example.image.ImageLoader - Error loading image from https://via.placeholder.com/1200x800?text=Award+7 | UnknownHostException: via.placeholder.com
+java.net.UnknownHostException: via.placeholder.com
+	at java.base/java.net.InetAddress$CachedAddresses.get(InetAddress.java:801)
+	at java.base/java.net.InetAddress$NameServiceAddresses.get(InetAddress.java:887)
+	at java.base/java.net.InetAddress.getAllByName0(InetAddress.java:1532)
+	at java.base/java.net.InetAddress.getAllByName(InetAddress.java:1384)
+	at java.base/java.net.InetAddress.getAllByName(InetAddress.java:1305)
+	at okhttp3.Dns$Companion$DnsSystem.lookup(Dns.kt:49)
+	at okhttp3.internal.connection.RouteSelector.resetNextInetSocketAddress(RouteSelector.kt:169)
+	at okhttp3.internal.connection.RouteSelector.nextProxy(RouteSelector.kt:131)
+	at okhttp3.internal.connection.RouteSelector.next(RouteSelector.kt:73)
+	at okhttp3.internal.connection.ExchangeFinder.findConnection(ExchangeFinder.kt:205)
+	at okhttp3.internal.connection.ExchangeFinder.findHealthyConnection(ExchangeFinder.kt:106)
+	at okhttp3.internal.connection.ExchangeFinder.find(ExchangeFinder.kt:74)
+	at okhttp3.internal.connection.RealCall.initExchange$okhttp(RealCall.kt:255)
+	at okhttp3.internal.connection.ConnectInterceptor.intercept(ConnectInterceptor.kt:32)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.cache.CacheInterceptor.intercept(CacheInterceptor.kt:95)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.http.BridgeInterceptor.intercept(BridgeInterceptor.kt:83)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.http.RetryAndFollowUpInterceptor.intercept(RetryAndFollowUpInterceptor.kt:76)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.connection.RealCall.getResponseWithInterceptorChain$okhttp(RealCall.kt:201)
+	at okhttp3.internal.connection.RealCall.execute(RealCall.kt:154)
+	at org.example.image.ImageLoader.lambda$loadImage$2(ImageLoader.java:31)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:842)
+
+2025-10-31 22:59:03.692 ERROR org.example.image.ImageLoader - Error loading image from https://via.placeholder.com/1200x800?text=Award+6 | UnknownHostException: 这是在主机名解析时通常出现的暂时错误，它意味着本地服务器没有从权威服务器上收到响应。 (via.placeholder.com)
+java.net.UnknownHostException: 这是在主机名解析时通常出现的暂时错误，它意味着本地服务器没有从权威服务器上收到响应。 (via.placeholder.com)
+	at java.base/java.net.Inet6AddressImpl.lookupAllHostAddr(Native Method)
+	at java.base/java.net.InetAddress$PlatformNameService.lookupAllHostAddr(InetAddress.java:933)
+	at java.base/java.net.InetAddress.getAddressesFromNameService(InetAddress.java:1543)
+	at java.base/java.net.InetAddress$NameServiceAddresses.get(InetAddress.java:852)
+	at java.base/java.net.InetAddress.getAllByName0(InetAddress.java:1532)
+	at java.base/java.net.InetAddress.getAllByName(InetAddress.java:1384)
+	at java.base/java.net.InetAddress.getAllByName(InetAddress.java:1305)
+	at okhttp3.Dns$Companion$DnsSystem.lookup(Dns.kt:49)
+	at okhttp3.internal.connection.RouteSelector.resetNextInetSocketAddress(RouteSelector.kt:169)
+	at okhttp3.internal.connection.RouteSelector.nextProxy(RouteSelector.kt:131)
+	at okhttp3.internal.connection.RouteSelector.next(RouteSelector.kt:73)
+	at okhttp3.internal.connection.ExchangeFinder.findConnection(ExchangeFinder.kt:205)
+	at okhttp3.internal.connection.ExchangeFinder.findHealthyConnection(ExchangeFinder.kt:106)
+	at okhttp3.internal.connection.ExchangeFinder.find(ExchangeFinder.kt:74)
+	at okhttp3.internal.connection.RealCall.initExchange$okhttp(RealCall.kt:255)
+	at okhttp3.internal.connection.ConnectInterceptor.intercept(ConnectInterceptor.kt:32)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.cache.CacheInterceptor.intercept(CacheInterceptor.kt:95)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.http.BridgeInterceptor.intercept(BridgeInterceptor.kt:83)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.http.RetryAndFollowUpInterceptor.intercept(RetryAndFollowUpInterceptor.kt:76)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.connection.RealCall.getResponseWithInterceptorChain$okhttp(RealCall.kt:201)
+	at okhttp3.internal.connection.RealCall.execute(RealCall.kt:154)
+	at org.example.image.ImageLoader.lambda$loadImage$2(ImageLoader.java:31)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:842)
+
+2025-10-31 23:00:42.716 DEBUG org.example.app.DataLoader - 使用随机数据构建源文件
+2025-10-31 23:00:42.722 WARN  org.example.build.BuildNull - 模板文件缺失, 创建空工作簿替代。
+2025-10-31 23:00:43.766 DEBUG org.example.build.BuildNull - dataRowOffset=1
+2025-10-31 23:00:43.840 INFO  org.example.build.BuildNull - 构建完成: Raw_Source.xlsx
+2025-10-31 23:00:44.290 INFO  org.example.build.BuildList - BuildList: 汇总完成 -> Awards_Summary.xlsx
+2025-10-31 23:00:44.324 INFO  org.example.config.TemplateInitializer - 初始化模板成功
+2025-10-31 23:00:44.701 DEBUG org.example.startup.StartupIntegrityChecker - 文件存在性: summary=true newFile=true db=true
+2025-10-31 23:00:44.707 DEBUG org.example.startup.StartupIntegrityChecker - 已加载学生数量=10 累计奖项数量=88
+2025-10-31 23:00:44.708 DEBUG org.example.startup.StartupIntegrityChecker - 已存在记录学生数=0 其中已全部录入=0 (recordMap size可能 > 统计数)
+2025-10-31 23:00:44.708 INFO  org.example.startup.StartupIntegrityChecker - 启动完整性检查完成
+2025-10-31 23:00:50.199 DEBUG org.example.ui.AwardDialog - 学生=74954332674 奖项索引=1 标签=院 变化=0.2
+2025-10-31 23:00:54.327 DEBUG org.example.ui.AwardDialog - 学生=74954332674 奖项索引=2 标签=校 变化=0.3
+2025-10-31 23:00:55.680 DEBUG org.example.ui.AwardDialog - 学生=74954332674 奖项索引=3 标签=国 变化=0.8
+2025-10-31 23:00:57.001 DEBUG org.example.ui.AwardDialog - 学生=74954332674 奖项索引=4 标签=校 变化=0.3
+2025-10-31 23:00:58.685 DEBUG org.example.ui.AwardDialog - 学生=74954332674 奖项索引=5 标签=无 变化=0.0
+2025-10-31 23:01:00.675 DEBUG org.example.ui.AwardDialog - 学生=74954332674 奖项索引=6 标签=无 变化=0.0
+2025-10-31 23:01:02.064 DEBUG org.example.ui.AwardDialog - 学生=74954332674 奖项索引=5 标签=无 变化=0.0
+2025-10-31 23:01:02.672 DEBUG org.example.ui.AwardDialog - 学生=74954332674 奖项索引=5 标签=无 变化=0.0
+2025-10-31 23:01:02.840 DEBUG org.example.ui.AwardDialog - 学生=74954332674 奖项索引=5 标签=无 变化=0.0
+2025-10-31 23:01:03.018 DEBUG org.example.ui.AwardDialog - 学生=74954332674 奖项索引=5 标签=无 变化=0.0
+2025-10-31 23:01:03.184 DEBUG org.example.ui.AwardDialog - 学生=74954332674 奖项索引=5 标签=无 变化=0.0
+2025-10-31 23:01:03.341 DEBUG org.example.ui.AwardDialog - 学生=74954332674 奖项索引=5 标签=无 变化=0.0
+2025-10-31 23:01:07.328 DEBUG org.example.ui.AwardDialog - 学生=74954332674 奖项索引=5 标签=院 变化=0.2
+2025-10-31 23:01:11.373 DEBUG org.example.ui.AwardDialog - 学生=74954332674 奖项索引=3 标签=无 变化=0.0
+2025-10-31 23:01:15.250 DEBUG org.example.ui.AwardDialog - 学生=74954332674 奖项索引=6 标签=校 变化=0.3
+2025-10-31 23:01:20.273 DEBUG org.example.ui.AwardDialog - 学生=23039353768 奖项索引=0 标签=无 变化=0.0
+2025-10-31 23:02:19.515 DEBUG org.example.app.DataLoader - 从上次文件加载(不重建): Awards_Summary.xlsx
+2025-10-31 23:02:20.823 DEBUG org.example.startup.StartupIntegrityChecker - 文件存在性: summary=true newFile=true db=true
+2025-10-31 23:02:20.828 DEBUG org.example.startup.StartupIntegrityChecker - 已加载学生数量=10 累计奖项数量=88
+2025-10-31 23:02:20.828 DEBUG org.example.startup.StartupIntegrityChecker - 已存在记录学生数=0 其中已全部录入=0 (recordMap size可能 > 统计数)
+2025-10-31 23:02:20.828 INFO  org.example.startup.StartupIntegrityChecker - 启动完整性检查完成
+2025-10-31 23:02:25.016 DEBUG org.example.ui.AwardDialog - 学生=17196494725 奖项索引=0 标签=国 变化=0.8
+2025-10-31 23:02:26.859 DEBUG org.example.ui.AwardDialog - 学生=17196494725 奖项索引=1 标签=校 变化=0.3
+2025-10-31 23:10:49.948 DEBUG org.example.app.DataLoader - 从上次文件加载(不重建): Awards_Summary.xlsx
+2025-10-31 23:10:51.507 DEBUG org.example.startup.StartupIntegrityChecker - 文件存在性: summary=true newFile=true db=true
+2025-10-31 23:10:51.510 DEBUG org.example.startup.StartupIntegrityChecker - 已加载学生数量=10 累计奖项数量=88
+2025-10-31 23:10:51.511 DEBUG org.example.startup.StartupIntegrityChecker - 已存在记录学生数=0 其中已全部录入=0 (recordMap size可能 > 统计数)
+2025-10-31 23:10:51.511 INFO  org.example.startup.StartupIntegrityChecker - 启动完整性检查完成
+2025-10-31 23:10:55.009 DEBUG org.example.ui.AwardDialog - 学生=23039353768 奖项索引=0 标签=国 变化=0.8
+2025-10-31 23:10:57.572 DEBUG org.example.ui.AwardDialog - 学生=23039353768 奖项索引=1 标签=校 变化=0.3
+2025-10-31 23:10:59.142 DEBUG org.example.ui.AwardDialog - 学生=23039353768 奖项索引=2 标签=院 变化=0.2

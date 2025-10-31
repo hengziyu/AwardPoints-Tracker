@@ -5,6 +5,7 @@ import javafx.scene.image.Image;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import org.example.config.Config;
 import org.example.util.LoggerUtil;
 import org.slf4j.Logger;
 
@@ -20,7 +21,7 @@ public class ImageLoader {
 
     public void loadImage(String url, Consumer<Image> callback) {
         if (url == null || url.isEmpty()) {
-            Platform.runLater(() -> callback.accept(null));
+            Platform.runLater(() -> callback.accept(new Image(Config.PLACEHOLDER_IMAGE, true)));
             return;
         }
         executor.submit(() -> {

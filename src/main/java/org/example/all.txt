@@ -1,0 +1,1559 @@
+E:\部门\奖项证书收集\OVER\award_dialog.py
+————————
+# award_dialog.py
+
+import tkinter as tk
+from tkinter import ttk
+from PIL import Image, ImageTk, ImageOps
+import file_operations
+from config import NEW_FILE_PATH
+import logger
+from image_utils import ImageLoader
+import pandas as pd
+import db_operation
+log = logger.get_logger(__name__)
+
+
+
+
+class AwardDialog:
+    def __init__(self, parent, student_id, df, new_data, parent_app):
+        self.top = tk.Toplevel(parent)
+        self.top.title("奖项详情 of 🍊🐟")
+        self.top.geometry("800x600")
+        self.student_id = int(student_id)
+        self.df = df
+        self.new_data = new_data
+        self.parent_app = parent_app
+        self.student_data = df[df["学号"] == self.student_id].iloc[0]
+        self.awards = self.student_data['奖项']
+        self.current_award_index = 0
+
+        self.original_image = None
+        self.processed_image = None
+        self.next_image = None
+        self.prev_image = None
+
+        self.image_loading = False
+
+        self.button_states = {}
+
+        self.image_loader = ImageLoader()
+
+        self.create_widgets()
+        self.update_award_display()
+
+    def create_widgets(self):
+        try:
+            self.top_frame = tk.Frame(self.top)
+            self.top_frame.pack(side=tk.TOP, fill=tk.X)
+
+            self.buttons = [
+                ("证书", 0.2),
+                ("国", 0.8),
+                ("省市", 0.5),
+                ("校", 0.3),
+                ("院", 0.2),
+                ("无", 0.0)
+            ]
+
+            for label, points in self.buttons:
+                btn = tk.Button(self.top_frame, text=label, command=lambda l=label, p=points: self.update_award_points(l, p))
+                btn.pack(side=tk.LEFT, padx=5, pady=5)
+                self.button_states[label] = {"button": btn, "selected": False}
+
+            self.index_label = tk.Label(self.top_frame, text=f"1/{len(self.awards)}")
+            self.index_label.pack(side=tk.LEFT, padx=5, pady=5)
+
+            self.rotate_button = tk.Button(self.top_frame, text="翻转", command=self.rotate_image)
+            self.rotate_button.pack(side=tk.LEFT, padx=5, pady=5)
+
+            self.mirror_button = tk.Button(self.top_frame, text="镜像", command=self.mirror_image)
+            self.mirror_button.pack(side=tk.LEFT, padx=5, pady=5)
+
+            self.middle_frame = tk.Frame(self.top)
+            self.middle_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+            self.award_label = tk.Label(self.middle_frame, text="")
+            self.award_label.pack(side=tk.TOP, pady=10)
+
+            self.image_frame = tk.Frame(self.middle_frame)
+            self.image_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+            self.image_label = tk.Label(self.image_frame)
+            self.image_label.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+            self.nav_frame = tk.Frame(self.middle_frame)
+            self.nav_frame.pack(side=tk.BOTTOM, fill=tk.X)
+
+            self.prev_button = tk.Button(self.nav_frame, text="上一张", command=self.prev_award)
+            self.prev_button.pack(side=tk.LEFT, padx=5, pady=5)
+
+            self.next_button = tk.Button(self.nav_frame, text="下一张", command=self.next_award)
+            self.next_button.pack(side=tk.LEFT, padx=5, pady=5)
+
+            self.image_label.bind('<Configure>', self.on_resize)
+            self.update_button_states()
+        except Exception as ex:
+            logger.log_exception(log, ex, "Error creating widgets")
+
+    def on_resize(self, event):
+        if self.original_image is not None:
+            self.display_image(self.original_image)
+
+    def update_award_display(self):
+        try:
+            if not self.awards:
+                return
+            current_award = self.awards[self.current_award_index]
+            self.award_label.config(text=current_award['奖项'])
+            self.index_label.config(text=f"{self.current_award_index + 1}/{len(self.awards)}")
+
+            image_url = current_award['证书图片']
+            self.image_loading = True
+            self.image_label.config(text="加载中...", image='')
+            self.image_loader.load_image(image_url, self.display_image)
+
+            if self.current_award_index + 1 < len(self.awards):
+                next_image_url = self.awards[self.current_award_index + 1]['证书图片']
+                self.image_loader.load_image(next_image_url, lambda img: setattr(self, 'next_image', img))
+
+            if self.current_award_index - 1 >= 0:
+                prev_image_url = self.awards[self.current_award_index - 1]['证书图片']
+                self.image_loader.load_image(prev_image_url, lambda img: setattr(self, 'prev_image', img))
+
+            self.update_button_states()
+        except Exception as ex:
+            logger.log_exception(log, ex, "Error updating award display")
+
+    def display_image(self, image):
+        try:
+            width, height = self.image_label.winfo_width(), self.image_label.winfo_height() - 50
+            if width > 1 and height > 1:
+                self.processed_image = self.image_loader.resize_image(image, width, height)
+                self.photo = ImageTk.PhotoImage(self.processed_image)
+                self.image_label.config(image=self.photo, text="")
+                self.image_label.image = self.photo
+                self.original_image = image
+                self.image_loading = False
+            else:
+                self.top.after(100, lambda: self.display_image(image))
+        except Exception as ex:
+            logger.log_exception(log, ex, "Error displaying image")
+
+    def update_button_states(self):
+        try:
+            award_column = f'奖项{self.current_award_index + 1}'
+            student_records = self.new_data.loc[self.new_data['学号'] == self.student_id, award_column]
+
+            if not student_records.empty:
+                previous_label = student_records.values[0]
+            else:
+                previous_label = ''
+
+            for label in self.button_states:
+                if label == previous_label:
+                    self.button_states[label]["selected"] = True
+                    self.button_states[label]["button"].config(relief=tk.SUNKEN)
+                else:
+                    self.button_states[label]["selected"] = False
+                    self.button_states[label]["button"].config(relief=tk.RAISED)
+        except Exception as ex:
+            logger.log_exception(log, ex, "Error updating button states")
+
+    def rotate_image(self):
+        try:
+            if self.original_image is not None:
+                self.original_image = self.image_loader.rotate_image(self.original_image, 90)
+                self.display_image(self.original_image)
+        except Exception as ex:
+            logger.log_exception(log, ex, "Error rotating image")
+
+    def mirror_image(self):
+        try:
+            if self.original_image is not None:
+                self.original_image = self.image_loader.mirror_image(self.original_image)
+                self.display_image(self.original_image)
+        except Exception as ex:
+            logger.log_exception(log, ex, "Error mirroring image")
+
+    def prev_award(self):
+        try:
+            if self.image_loading:
+                self.image_label.config(image='', text="加载中...")
+                return
+            if self.current_award_index > 0:
+                self.current_award_index -= 1
+                self.image_label.config(image='', text="加载中...")
+                if self.prev_image:
+                    self.original_image = self.prev_image
+                    self.prev_image = None
+                self.update_award_display()
+        except Exception as ex:
+            logger.log_exception(log, ex, "Error showing previous award")
+
+    def next_award(self):
+        try:
+            if self.image_loading:
+                self.image_label.config(image='', text="加载中...")
+                return
+            if self.current_award_index < len(self.awards) - 1:
+                self.current_award_index += 1
+                self.image_label.config(image='', text="加载中...")
+                if self.next_image:
+                    self.original_image = self.next_image
+                    self.next_image = None
+                self.update_award_display()
+        except Exception as ex:
+            logger.log_exception(log, ex, "Error showing next award")
+
+    def update_award_points(self, label, points):
+        try:
+            current_award = self.awards[self.current_award_index]
+            current_award['分数'] = points
+
+            def update_awards(awards):
+                if self.student_id == self.student_data['学号']:
+                    return self.awards
+                return awards
+
+            if self.student_id in self.new_data['学号'].values:
+                student_record = self.new_data[self.new_data['学号'] == self.student_id]
+            else:
+                empty_row = self.new_data[self.new_data['学号'].isna() | (self.new_data['学号'] == '')]
+                if not empty_row.empty:
+                    empty_index = empty_row.index[0]
+                    self.new_data.at[empty_index, '学号'] = int(self.student_id)
+                    self.new_data.at[empty_index, '姓名'] = str(self.student_data['姓名'])
+                    self.new_data.at[empty_index, '班级'] = str(self.student_data['班级'])
+                    self.new_data.at[empty_index, '证书总分'] = 0.0
+                    self.new_data.at[empty_index, '奖项总分'] = 0.0
+                    self.new_data.at[empty_index, '已录入奖项数'] = 0
+                    for i in range(1, 51):
+                        self.new_data.at[empty_index, f'奖项{i}'] = ''
+                    student_record = self.new_data[self.new_data.index == empty_index]
+                else:
+                    new_row = pd.DataFrame({
+                        '学号': [int(self.student_id)],
+                        '姓名': [str(self.student_data['姓名'])],
+                        '班级': [str(self.student_data['班级'])],
+                        '证书总分': [0.0],
+                        '奖项总分': [0.0],
+                        '已录入奖项数': [0],
+                        '奖项1': [''],
+                        '奖项2': [''],
+                        '奖项3': [''],
+                        '奖项4': [''],
+                        '奖项5': [''],
+                        '奖项6': [''],
+                        '奖项7': [''],
+                        '奖项8': [''],
+                        '奖项9': [''],
+                        '奖项10': [''],
+                        '奖项11': [''],
+                        '奖项12': [''],
+                        '奖项13': [''],
+                        '奖项14': [''],
+                        '奖项15': [''],
+                        '奖项16': [''],
+                        '奖项17': [''],
+                        '奖项18': [''],
+                        '奖项19': [''],
+                        '奖项20': [''],
+                        '奖项21': [''],
+                        '奖项22': [''],
+                        '奖项23': [''],
+                        '奖项24': [''],
+                        '奖项25': [''],
+                        '奖项26': [''],
+                        '奖项27': [''],
+                        '奖项28': [''],
+                        '奖项29': [''],
+                        '奖项30': [''],
+                        '奖项31': [''],
+                        '奖项32': [''],
+                        '奖项33': [''],
+                        '奖项34': [''],
+                        '奖项35': [''],
+                        '奖项36': [''],
+                        '奖项37': [''],
+                        '奖项38': [''],
+                        '奖项39': [''],
+                        '奖项40': [''],
+                        '奖项41': [''],
+                        '奖项42': [''],
+                        '奖项43': [''],
+                        '奖项44': [''],
+                        '奖项45': [''],
+                        '奖项46': [''],
+                        '奖项47': [''],
+                        '奖项48': [''],
+                        '奖项49': [''],
+                        '奖项50': ['']
+                    })
+
+                    new_row = new_row.dropna(axis=1, how='all')
+                    self.new_data = self.new_data.dropna(axis=1, how='all')
+                    self.new_data = pd.concat([self.new_data, new_row], ignore_index=True)
+                    student_record = self.new_data[self.new_data['学号'] == self.student_id]
+
+            self.new_data[f'奖项{self.current_award_index + 1}'] = self.new_data[f'奖项{self.current_award_index + 1}'].astype(str).fillna("")
+
+            award_column = f'奖项{self.current_award_index + 1}'
+            previous_label = self.new_data.loc[student_record.index, award_column].values[0]
+
+
+
+            if previous_label == label:
+                if label == "证书":
+                    self.new_data.loc[student_record.index, '证书总分'] -= 0.2
+                elif label == "国":
+                    self.new_data.loc[student_record.index, '奖项总分'] -= 0.8
+                elif label == "省市":
+                    self.new_data.loc[student_record.index, '奖项总分'] -= 0.5
+                elif label == "校":
+                    self.new_data.loc[student_record.index, '奖项总分'] -= 0.3
+                elif label == "院":
+                    self.new_data.loc[student_record.index, '奖项总分'] -= 0.2
+
+                self.new_data.loc[student_record.index, '已录入奖项数'] -= 1
+                self.new_data.loc[student_record.index, award_column] = ''
+            else:
+                if previous_label != '':
+                    if previous_label == "证书":
+                        self.new_data.loc[student_record.index, '证书总分'] -= 0.2
+                    elif previous_label == "国":
+                        self.new_data.loc[student_record.index, '奖项总分'] -= 0.8
+                    elif previous_label == "省市":
+                        self.new_data.loc[student_record.index, '奖项总分'] -= 0.5
+                    elif previous_label == "校":
+                        self.new_data.loc[student_record.index, '奖项总分'] -= 0.3
+                    elif previous_label == "院":
+                        self.new_data.loc[student_record.index, '奖项总分'] -= 0.2
+
+                if label == "证书":
+                    self.new_data.loc[student_record.index, '证书总分'] += 0.2
+                elif label == "国":
+                    self.new_data.loc[student_record.index, '奖项总分'] += 0.8
+                elif label == "省市":
+                    self.new_data.loc[student_record.index, '奖项总分'] += 0.5
+                elif label == "校":
+                    self.new_data.loc[student_record.index, '奖项总分'] += 0.3
+                elif label == "院":
+                    self.new_data.loc[student_record.index, '奖项总分'] += 0.2
+
+                if previous_label == '':
+                    self.new_data.loc[student_record.index, '已录入奖项数'] += 1
+
+                self.new_data.loc[student_record.index, award_column] = label
+            db_operation.write_db(self.student_id,label,self.current_award_index,self.new_data.loc[student_record.index, '证书总分'].values[0],self.new_data.loc[student_record.index, '奖项总分'].values[0])
+            file_operations.save_new_data(self.new_data, NEW_FILE_PATH)
+
+            self.parent_app.refresh_data()
+            self.update_button_states()
+        except Exception as ex:
+            logger.log_exception(log, ex, "Error updating award points")
+
+# 🍊🐟 🐱
+——————
+E:\部门\奖项证书收集\OVER\buid_null.py
+————————
+# buid_null.py
+
+import os
+import warnings
+import pandas as pd
+import random
+from logger import get_logger, log_exception
+from config import QUANTITY, MAX_AWARDS, RANDOM_AWARDS_COUNT
+
+logger = get_logger(__name__)
+
+warnings.filterwarnings(
+    'ignore',
+    category=FutureWarning,
+    message="Setting an item of incompatible dtype is deprecated and will raise an error in a future version of pandas."
+)
+
+# ——————————————————————
+# 嵌入式文件恢复（原样保留，不做改动）
+# ——————————————————————
+def get_embedded_file():
+    binary_data = bytes.fromhex('504b03040a0000000000874ee24000000000000000000000000009000000646f6350726f70732f504b0304140000000800874ee240bb37d9af300100003402000010000000646f6350726f70732f6170702e786d6c9d91c14a03311445f782ff10b26f332d2252322982883b075a751d336fdac04c1292e7d0fa2d2e7421f8076ef46f54fc0c3313d0a9b872775feee5bef3089f6f9a9ab4e083b626a79371460918654b6d5639bd589e8e8e2809284d296b6b20a75b08742ef6f778e1ad038f1a02891526e4748de8668c05b586468671b44d742aeb1b8971f42b66ab4a2b38b1eaa601836c9a65870c3608a68472e4be0b696a9cb5f8dfd2d2aa8e2f5c2eb72e020b7eec5cad95c478a5b82a16e4f3e1e9e3fe85b3e13b3f03d9dd5d48ed83e02dce5a50683d09fa365e3ea5e45a06e81a73da4aafa5c1d8dcc5d2d0ebda05f4e2fdf9f1edf52e2ee12cfae9ad97c3e850eb0331e90351ec06bb82c4118d5dc2a5c61ac27955488f7f004f86c03d43c24d388b3500a69d43befee2b8e95737fbf96ef105504b0304140000000800874ee240fa49ffbd350100003b02000011000000646f6350726f70732f636f72652e786d6c8d914d4ec3301085f748dc21f23eb1ddf26b25ae04a82b2a2151046267d9d3d622762cdb9076c9bdb81357c04dd350040b96f67bf3cd9b9972b23675f6063ee8c656881604656065a3b45d56e8613ecd2f5016a2b04ad48d850a6d20a0093f3e2aa563b2f170e71b073e6a085922d9c0a4abd02a46c7300e7205468422396c12178d3722a6a75f6227e48b58021e1172860d44a14414780bccdd40443d52c901e95e7ddd0194c45083011b03a605c5dfde08de843f0b3ae5c06974dcb834531ff790ade44e1cdceba00763dbb6453bee62a4fc143fcd6eefbb51736db7bb9280f8763fb508719656b9d0a0ae36fcf3e3bdc4bfbf4b25bb604c7a101154965ab15db0bdf238bebe994f111f91d1494e4ef3319d9333462f1921cf25debbfa7a3e004ddffb9fc4734629a387c43d8077b97f9e9b7f01504b0304140000000800874ee2407749ae132a0100001102000013000000646f6350726f70732f637573746f6d2e786d6ca5915d4bc3301486ef05ff43c97d9a8faded3ada8ef50bc40b07cedd4a49d3add0242549a743fcef66cc295e78a39787f3f2f0bce724ab57317847ae4daf640a888f81c725536d2ff72978dad670013c631bd93683923c05276ec02abbbd49365a8d5cdb9e1bcf21a449c1c1da71899061072e1ae3bbb5749b4e69d15837ea3d525dd7335e2a36092e2da21887884dc62a01c72f1cb8f09647fb5764abd8d9ceecb6a7d1e966c927fce475c2f66d0adecaa028cb0007905671010926398c677104f102639ad3a28ed7d53bf0c67398024f36c255bf2b768e75b4cb617c31566705218b222035c1b36a9e07e53aac224a23bc8ec2399dd7d133a109fa8e27e8aaf14fa1d955e8fef1c1f56c2766f3a91fda1dd73ffc280e2824d4774ff54918d1f8371b74bed6e597d907504b03040a0000000000874ee24000000000000000000000000003000000786c2f504b03040a0000000000874ee2400000000000000000000000000e000000786c2f776f726b7368656574732f504b0304140000000800874ee2407264bedf610b0000133c000018000000786c2f776f726b7368656574732f7368656574312e786d6c9d9b5f97dac811c5df734ebe0387f7054a08043e33b387b5e3ec66771367bd7f92bc6146e3e12c8c08c833de7cfadcaa6e815aae8bcdbc0c9a6a6e75abf4a3a5be92aebefeb8ddf41ecbfd615d3d5cf76530eaf7ca875575bb7e787fddffe5e7d75fcdfabd43bd7cb85d6eaa87f2baff4779e87f7df3e73f5d3d55fbdf0ff76559f790e1e170ddbfafebdd8be1f0b0ba2fb7cbc3a0da950f68b9abf6db658d7ff7ef8787ddbe5cde9a68bb1966a3d174b85dae1ffa21c38bfd97e4a8eeeed6abf255b5fab02d1fea90645f6e9635c67fb85fef0e4db68fb75f94ef76bf7cc2be36e3690df1556839e693fc93f16dd7ab7d75a8eeeac1aada0ec3d03eddcbf9709eece776f54922a758dbe5fef70fbbaf9078879d7bb7deaceb3f6c779b0195f529cfd3d3d3e0697718ac1ee2285a05926258d62f3f1cea6afb6a592ffb37577604deec873757b76b54510f7d6f5fde5df717f262f17d36923e9aec4bbfaecba7436bbb572fdfbd2d37e5aa2e6f414bbf5757bb1fcabbfa65b9d9a87c0a7c148c7755f5bb6abfc3b746daa369b49fe5aa5e3f96e1fbdfc8bc005dffb5beed1ff43b3c76dcde6e06f1da707ab3efdd9677cb0f9bfa65b5f96d7d5bdf5ff7e703c9b3d9a468fef69baffc543d7d5baedfdfd71870362826ba73ab6a838cf8dbdbae15fb7e6fbbfc689f4f215b3e68e7cae6fddeca2a183bb30a1de55994e333caa5484773563e8e727c46793138ee860de3ac3c8ff2c9497ef6fbd3f87d7cc6eeb26cd029dd999dc511b35ae1b3d9d9d105724c2726c767d33baa7fa63f94de04f86cfa9b240707653b231710198eada2190feeec8201cb110e6c34439e4cda4708953c3782060f39f191cf072d543f83973480e8c6b346d02022d88809269f291b680a653b61955db4d70d6672e26c321e9c7e9fd9ec33656b40931369978da0414d4eace5b3f6719b20f3b903d7a02727f62e1a41d6b0a71b0d7bf30b6a9035ece9c6738e7cd6b0a71bcd919f5d3037650d7bbaf1ac1134ec6527f6f2e202fab38644dd78d6081a12b3168938a2678e7cd6b0a71bcfeab3612f6bb127971cf9863d9d1b9e338271c39e6ec404e34bea3e6ed8d38de30880d199ba8d1bdc74a3e9f49293cbb8c14d378e9d8edb3fdaf3b3c6b8c14d379a04974cf7e30637dd6812e4e7278a7143986e440de6ba2f9fe1c70d6fba71ec749a9ce6bcc20fc3758c5d31e9b5ddcdd5be7aeae1ba1787ecb05bea55b9bc404e5cea68748130ae820ef8fff16674357cc415d62ab67dd36e93b4ed65bb2d4bdb5eb5dbc669db5fda6d79daf6badd3649dbfeda6e9ba66ddfb6db8ab4edbb76db2c6dfb5bbb6d9eb67ddf6e934e617e481a3b95f93169ec94e6ef4963a736ff481a3bc579933476aaf3cfa4b1539e9f92c64e7dde268d9d02fd9c34762af44bbb31eb54e8d7a4b153a1df92c64e85fe9534762af4efa4b153a1ff248d9d0a2d12d0b34e891609ea59a7468b14f64e911609ee59a74a8b04f871a74c8b04f971a74e8b04fa71a7508b04fb71a7528b04fc71a7548b04fd71b75609fce353ad86984a8ef309a6f3e37c22c7e924b389e4b423890413b823199be4b477890453b623c94d72dae5448249da914c4c72aa4322c11ced48a62639152791605676243aaf3ede908ae1bcef486626392197f48233bd23999be4c46122d1d58da341588776c23315e1b7e389f4c03edeb4e6bf54e53380458da90805ba64f1fa0a1c080141d7299e2aa0208405f16140d8464870d0f589d75700420811ba28f15481092150e84ac453052c8470a1cb0f4f15c8108286ae391c15c2560dc246e6b381b0aa5a337fc286ae2ebcbe021b19614397149e2ace11840d5d4778aac04646d8d0c583a70a6c64840d5d3178aac04646d8d04583a70a6cb44e47690d7d36b080b0ca13367479e0f515d8c8081bba267054085b5f840d5d0878aac046eb7497ec972e053c5560a3751a4c553e1b5816e8085ba7c754e5b381b580a9081b7aa5ef8d30b0d13a9da67df96c6009607d1136f402dfeb2bb0c14ebf639f0d84ad2fc2c6d8670361531136729f0d844d45d8c87d361056557eba144a6a98fb6c206c2a326fe43e1b089b8acc1bb9cf06c2a6226ce43e1b089b8acc1bb9cf06c2a6226ce82ad36103615391734aeeb381b0a9081bb9cf06c2a6226c4c7c361036156163e2b381b0aa26848d89cf06c2a6226ca8ade9d41061531136263e1b089b8ab031f1d940d854848d89cf06c2a6226ca855e9ed57606342d898f86c206c7d1136263e1b089b8ab0a1b77e9c11226c2ac2c6d4670361554d091b539f0d844d45d898fa6c206c2ac2c6d4670361531136a63e1b089b8ab031f5d940d854848da9cf06c2a6226c4c7d361036156163eab381b0a9081b85cf06c2a6226c143e1b08abaa206c143e1b089b8ab051f86c206c2ac246e1b381b0a9081bb805e9fd5210361561a3f0d940d854848dc26703615311360a9f0d844d45d8287c361036156163e6b381b0a9081b339f0d845535236ccc7c361036156163e6b381b0a9081b339f0d844d45d898f96c206c2ac286de4a73e65e844d45d898f96c206c2ac2c6cc670361531136663e1b089b8ab031f7d940d854848db9cf06c2aa9a1336e63e1b089b8ab031f7d940d854848db9cf06c2a6226ccc7d361036156163eeb381b0a9081bf660467307410b176e20206c2ac2c6dc670361531136e63e1b089b8ab021231f0e8d9b8ed02178bcc5fbb1685c75d01fef0e248b1519f984683c08092332f221d17810124c64e473a2f12024a4c8c84745e341486091914f8bc68390f022237f32d17810126464e433a3f12024d4c8c8c746e341c8c061a669744d918000a08f8238d3ac206e3d52eb549ffc7085911c61e430fb14f1d023238739a8880721238799a88d8b2a8c1ce6a3221e7a64e4302b15f12064e4303715f12064e4304315f12064e4104f551a53551839c45695e8ab2201418e38ab82b80d9579ab42cc558d07212387f8ab827810327288c52a8807212387b8ac827810327288d12a88072123479fcaf07e8fd16c45027638c89c031b36f4c8c8218eab44cb555ab712d3930e315d0571eb91d9ae427c578d07219b73f4d10baf38d17b4502521c7de4c21546725ab72d3bfb48ce563066c3501939fabc85db6324a775b3b3d323395bd9b312b8066046ac102756e361a88c1c62c64a746391805495f8b1120d5924604272b68a9e2c123021395b455b5672460e3166253ab3783297f548c889e62c1230212127fab392337288432bd1a2959ccd39c4a495e8d222011b2a9973a2518b044c48e69ce8d54acec8216ead44bb5672460e316c253ab64840864a3c5b89a62d1230219973a26f8b044c48c889d6ad4c1839c4bc95e8deca849143fc5b89062e12b0a1923907d6ae4d1dccc415e2e26a3c081939c4c895e8e42201192af172f5f1fed0232387d8b912fd5c24603d9239275aba48c084849ce8eaca9491437c5d89c6ae4c1939c4da95e8ed22011b2a395b457b1709989090131d5e99b2398778bc124d5e99327288cd2bd1e745023254e2f44ab47a918009c9d92ababd48c084849c68f84ac1c82196af44cf570a460e717d25dabe48c0864ace56d1f945022624e444f3570a460eb17f25fabf52307288032cd1024602365472b68a2e30121021f181251ac152307288152cd10b4602d6232127dac148c08464ce898eb0cc1839c41396680acb8c91436c6189be3012b0a11272a2358c044c48e69ce80ecb8c9143fc618906b1cc1839c42296e8112301192a718925dac448c08464ce894e3112302121279ac53267e410bb58a25f2c73460e718c255ac648c0864ae69ce81a2301131272a2712c73460eb18ef55d3fbb78983372887b2cd13e4602365432e7440719097c21de4075d78f1a0f4325e4e82b92dec253e32a44824e8fe1adc6f08cfe6ef9befc71b97fbf7e38f436787912af48ea6b89bd7d784931fc83172bed31fe77558d17376df31e2fcf96788c7f34c097efaaaa6efec10b8d9af36d597fd8f576cb5db97fbbfe1fded54559aafd1aafc9dadbb1d7fd5db5aff7cb75ad6f408664af2d8bbe75797c9df7e6ff504b03040a0000000000874ee24000000000000000000000000009000000786c2f7468656d652f504b0304140000000800874ee240c78c1ed4ec060000741d000013000000786c2f7468656d652f7468656d65312e786d6ced594f6f1b4514bf23f11d467b6f6327761a4775aad8b11b68d346895bd4e3783df64e33bbb39a1927f10db547242444415c90b8714040a556e2523e4da0088ad4afc09b99ddf54e3c6e9c1040407368bdb3bff7e6bddffb337ff6fa8de398a1432224e54933a85ead048824211fd064d40ceef5ba57d60224154e0698f18434830991c18d8d77dfb98ed755446282403e91ebb819444aa5eb4b4b3284612caff29424f06ec8458c153c8ad1d240e023d01bb3a5e54a657529c63409508263507b7738a421413dad32d8c89577183c264aea8190897dad9a3812063b38a86a849cc83613e810b36600f30cf8518f1cab00312c15bc680615f3172c6d5c5fc2eb99105373644b725df397c9650283836533a718f58b49abdd5ae3da56a1df00989ac5753a9d76a75ae833001c86e0a9b5a5acb3d65dabb6729d2590fd39abbb5da9576a2ebea47f65c6e646abd5aa37325bac5203b23f6b33f8b5ca6a6d73d9c11b90c5d767f0b5d666bbbdeae00dc8e25767f0dd6b8dd59a8b37a088d1e46006ad03daed66da0bc890b36d2f7c0de06b950c3e45413614d9a5a718f244cdcbb5183fe4a20b000d6458d104a9494a8638842c6ee3b82f28d613e075824b6fec50286786f45c488682a6aa19bc9f62a888a9bed72fbe7dfde2197afde2e9c9a3e7278f7e3879fcf8e4d1f7569723b88d935159f0d5d79ffcfee587e8b7675fbd7af2991f2fcbf89fbffbe8a71f3ff503a182a616bdfcfce92fcf9fbefce2e35fbf79e2816f0adc2fc37b342612dd2147688fc7e09b21c6b59cf4c5f9247a11a68e048e40b7477547450ef0ce04331fae455cf2ee0b681e3ee0cdf143c7d6fd488c15f5cc7c2b8a1de00ee7acc58597805b7aae12c3bd7132f24f2ec665dc1ec687beb9db387142db19a7d035f3a474b86f47c4317397e144e111498842fa1d3f20c4e3dd034a1d5e776828b8e443851e50d4c2d44b498ff69d449a0a6dd318e232f1f90ca176b8d9b98f5a9cf9bcde22872e120a02338ff13dc21c1a6fe2b1c2b14f650fc7ac4cf86dac229f91fb131196711da920d223c238ea0c88943e99bb02fc2d05fd16867ee50dfb0e9bc42e52287ae0d3791b735e466ef1837684e3d487dda74954c6be270f204531dae5ca07dfe16e85e86788034ee686fb3e254eb8cf6e04f7e8c831699a20facd58e85842a376fa6f4c9337356346a11bdb1c78db8c9bc1262c4dbe92d83ed582e7e1fe858d770b8f935d02b93ebbf0bcedbb6ffb6ef09fefbbf36a79d16e3b6db0d07bf5e6c1ee8bcd2e399ebb491e52c6f6d58491dbd2ec93252c16832e0c6a39734024c5a1298de067d6dc1ddc4860238304571f5015ed4738853d7635d04a4632533d9228e512ce7666d8ab5be3619faeecc9b0aecf0cb61f48ac76f8c00eafe8e1fc6850a8314bcec89c3ff38956b48245275bb9962905b72f3259551bb5f06c55639a6975ce6c85cb10c359d760b06013762108f62ec0f22a1cd1f5d47036c18c0c34ef7601cec362a2f0d78428f3da3a12e101b12172864b6c564decf21432770490529ed09d8fcd823520ed6c234c5acccf9f0549ce154c49d66577aa9a5852ae2d96a0a366d0a82fd70314e2b4190ce1540a3fe3148226f5be0db3115ced844ad8ac3db3164d914e3d6ef8b3aa0a170d730ac629e35448b585656463685e65a162899ec9dabf5cafe964bb1c076ca25ec08a953548917fcc0a08b51b5a321c925095835d1ad1dcd9c7ac13f2b122623f1a1ca13e1b8b3d0ce1074eb53f032ae172c114b47e809b30cdb679e5f6d6acd394ef9f0cce8e63964638eb96fa2625af380b37f556d8609e4ae6816f5edb8d73e7774557fc65b9524ee3ff992b7a3980d3feca404720848b588191aed766c0858a3874a134a26157c0ba6f7a07640bdca6c26b201fae83cdff821ceaff6dcd591da6ace1d0a6f6e808090acb898a0421bbd0964cf69da1ac9a2d3d5625cb14998c2a992b536b769f1c12d6d33d7055f7e0004590eaa69b646dc0e04ee79ffb9c55507fa4f728e57a737a48b174da1af8bb372eb698c1a9537b099dbf39ff85899ed5cfca1bf17c8d2c3ba25f4c7749b5bc2a9cc5afd1c8a6baa0098b2cc0a5b5d676ac198f97ebb97110c5598f61b0d8cfa4706783f43fb0fe511132fb6d412fa83dbe07bd15c1a702cb1f82acbea2bb1a64906e90f6571ff63d76d026935665a9cd763e9ab57cb1bee48d6a31ef29b2b5658bc4fb9c64179b28773aa7162f93ec8c61876b3b36976a88ece91285a1617e0e3181311fa5cadf8d78ff21047a0b6ee8c7cc7e4992293c993a487785c9ae3e1f4cb29f4cda05d7669d3ec368244bf6c810d1c1717efe2898b02564bf66e45b6483d6623ad10ac115dfa1c115ccf05ad4ae9685f0f2d9c2858499195a76216caec97c0ae05b56d6b8f5d10ef0b6c95aaf7571e54cb1e4cf50b680f17ecabc279f4529b307c53706ea0294a9e33753963105e49d4e3c1832c9b9f107504b0304140000000800874ee240ff6e5a8eaf0c0000756100000d000000786c2f7374796c65732e786d6cdd5d5b8f1b571d7f47e23b8c1cc103aae3b9f932dbf5865def8e5429aa22121012a068d61eef8e187bcc789cee16550a4d43a028482840a0aa446915c20359a0201a9526fd32b1b3fbc457e07fce993917fbcc7892f832dbdd871d8fcffffe3bff733fbb79e9a8e72b37dc70e805fd6649bba89614b7df0e3a5effa059faee35bbdc2829c3c8e9771c3fe8bbcdd2b13b2c5ddafafad73687d1b1ef5e3d74dd480116fd61b3741845838d4a65d83e747bcef0623070fbf04d37087b4e041fc383ca7010ba4e6788887a7e4557d55aa5e778fd12e1b0d16be761d273c21f8f06e576d01b3891b7eff95e748c7995945e7be38d837e103afb3ea87a145a0967789c61ddf3da61300cbad145605509ba5dafedce68a8d52aa17bc343deb14a5b9bfd51cfee4543a51d8cfa51b364d2570af9e68d0ebcd44a0a31ba1574408debcab7940baf5db8a05e575e47cf3f2cf39fbef9935110bd5e267f70896f5f574a954414cf579fe64b88fef7e503f2c08b99f98a973af32579914b09635a8958ea4575ca3ef642e07ee952b691e634ff1965b1f712ee33dfc676a67e9fa14c258eeed66637e8b320eb1a4419bdd9da1cbeaddc707ca8262a8e90d373c9e7edd0737cf4aa7de88443a811a49461a27715423bc541c3c5033f089508ea0be004bfe9539ee3935f3d7b722f8d29ae64b1f49e07909f913402d1545f4e5a78b0df2cd9b60a3fb68da8e68ac4c6beb2c006086c4cf92dc5c69c0233ac23f62dd2ba7dde9d0dc4b9cd07cfc8254b238898ef4b8f97361bbcba8d7e7389cce94bc1bceab2cd13a461d72dd3998234ce9971bd5b70e8325069d8865daf21e72eaacea59916577224d0581e4e385fc602ededfaaebad04a3ec7421bff2cd2a519f15b9d752fd424e4ace2198641474c5b6cd83284592d6809165a0b3285d5aacbb72c0ed742812f336ab1b0c01d9321f46d3cdfa75d5ac340bd1d78b3b509ddebc80dfb367c50e2e76bc703e8a9f4612480aa5c85949b53fa20748e351db729f9088681ef759016072ddcc426b905aa7aab85e4eec75f78fd8e7be44297bb463a5a9cc279954b95d56a59d68a64e936fcae46d67615fdae4656abb667b7f656230b90515f9dacbd1d6bd9388c6b3ac6f512e14ec528918706b4eac5ba65590dadd668342cd3d0562fbf0af22da361d57450435d365467ed37407cbd5a6d54354b37b565a78058fe8accac96d61b664efe5ac2ccc95f4b9871a767f9b5b9b6e63073f2d712664efe5ac25c5f729b17278dfa9ac3ccc95f4b9839f96b09339e045a7e6d86f9f7b5b6cd9cfcb5849993bf9630afa80b004b156b0d33277f2d61e6e4bf6298f1201386b5fb41d881752d255eab41cb37e4d5d6a6ef7623184786dec121fa1b050334aa0ca2081682b6363b9e7310f41d1f1e2b0945f21751c27a182c7d354bd1212c5d25f3c0f120754747bfa801a8a0a2b18c9c14581fac4e4e02503cd13b27053172be8d6080cc3b89949edbf1463d6a3ced461397213f2e4d04ad26261aa9987553ad9b55bd467c9ed7bcc40e5908d9e47ade107214f942c811e40c2147b1081bd9c4705e1b398a7c367204396de4285ed4c64e3082255f8ac799e96f9995736966ed9c4b22b1742e4d5e5be75449b91cdb8675373c4f0fa9ec65eaa5b4a608f57dbecd42f12c35e2740bc9bbedfafe559466bfdfa519bc5a85001f75b92571d8ac809655d1aa3b7a8489caf891a46bf2616bd3f1bd837ecfedc3baac1b465e1b2de1b6e1a34b564d8fba536c4dbcc84df8a2c57c395fc5190cfc631be463e9e41314659f76700bc43e6f277ab05757c22072db11de7ca182792fac2a5e2f3f17aa420b9f04abe84ec53b38ce85534dbc29e45ca8ca5556a47456a57a73d4db77431bef1c6275c55e75e5e2344619e17c69ccd53170374b88f01ea7aa141f0be96c09098bf3294a5de7cba7308178ce3486b9b073a6314ceb4835061067e156c80dcbc52dcc48145c43d4d4ca6a1664b182f8304d43480fb9355c41f78acb56b0e78f3a15fcc8122aa4b10c95970b458dcbf2a007530a32d5fa94e29a7741a9b57a8a6bc1c139cc539021d7e729f088b4a24212cc50ca5e61b2d3d2da3cc8824551916be4e09185363b99ec2c7f74c6a70fae5d83c7822ac9356df0585025b9b6031e8ba9a4ceb516a8e538075a4253524c2d611706cd929a3096295405e7b5143a0845d252c0a5d03817564ba1b52e9296022e8bdbf0f0b82c6ccb23e0b2b04d8fa06561db1e1e9748e3e26775386255502df988eb856d7b042d0bdbf608b82c6cdb236859d8b647887861db1e41cbc2b63d42c40bdbf6085a16b6ede1236e14b6ed11b42c6cdbc347dc286cdb0341964e61e1c350c26a3dea88ce5dad27934a0b5d55878d13821e269a752b842268a2b4108aa0c9d1422882e6b3d7a44885df734276a0709b4fd02500028a10eee76b7ad4c55742e04da45800b0e476b7887b5ba8020a3a1fdc2c8d1f3f3e7df81edc618199a06c3af27cd8254af6b500ac6708eede7af6e4eef8173f3ffbe0b709194a6f8c8c1cb64e36d7c4724efffd70fcf8670901ca348c009f009a96f3fc8f4f41c8e4ef5408ea73321a7c9c659a66cce9f603f5478934a88b1c253e21314d49d4e36850af8c49c3dbed6768fe73fbecded3c9af1f2472501f89d19003fc536e187ff6e9e9c99767f74f9e7ff0dee9343deabd307a1ccf6999937ffdf5eccefb8940d4916004e4c688698ad3477f19ffe6fdc9efef4c3efc5b42879a768e8e9cb19ed274f2d19db38fff9050e0f9458e44eafed3879f8072939b0f4569680189135795e2838853a02841229e84e3044aa31613019a622211239a346c3111148d89447868d2b8c54450342612f101cda8a4aa9c3ebd37be4dd1a189f080fe410ac99dcfa9141111308495919cfcf9f9c97d4a226202c6931292c92737277f7a30befbbbf1ed5b938fbea0b4222e7469a008e467685177870bb22eadd3937fde99dcfc6f220e8fc85988c9f1dd69f88e1f3ca1e5c5aca14b2131feec849617d1a04bd17076f3dd678f1f5112110bba140be32f3e3ffdc72dc0f8f8d1fdb38f3f3cfde5a70cb66084e006292e74f51b4a59c9642362057ab992289af3d988f831a4f8a9cd6723620afa89126d24e6d07aa98bc082f3df1206a95ea16c70679f01865c74320d9854af3036623e32a4b92cd52b8c0d3c718837e4709cc50a4d3ce0068181149fa95e616c44cc1a52cca67a85b111916b48919bea15c64644ae2945ae042b34b31a2266e1a6ab17c10a63236216f6304ad8a47a85b111910bbb76256c52bd42d9801bf850c3e840c246e2158809696fd0855f1cd84c296653b1c2d8889835a5984df50a632322d7942237d52b8c0df887374a8a5c89570062b1578015cf408ad954af30362266ab52cca67a85b111915b952237d52b8c8d88dcaa14b96fa27dab3ef583d4f02b6e8876a02785e466b546610897f11dd35252ad93520adf43962ad60a7a3d87329356175c44e084ab031b1bc1e8a573c4f6e443370ebf987b67c8f4451bf44c003dcf9371f340aec215d9f51f1550f6dc2808c34938ce155f1e87b3107fc5180e7e7c991c6fd6b2a9c8f291702c6deaac090d0f24ce0a3e0e42cfcde5571457ece4ae3cd8e09471ff4c2a96407e722057d0691e32b00bdb69ce4e1c907af64f9035efd89f5078f6889170224d282b3967935e383965731884dedb609ee3671fe4a1b55072f8b2c298702722f9c8be64b8a8d0a554fd246cc415af607ee2cb7ca07e45087f657c925a9d78e0e4ab782b8e607ecd73e5ea0487507fb34148b3671e7b51e14c6016b24ef2b12fbc82f91b56b400f232edd56a2afb5ce0513564c93f77b393c92513aa5f1547e7a9b72fe325546ba0df1da16badf1a158ba6c0043c68edb75467e748d7ed92cb1e72ba10bd7111bd7b7db68b401e3d4b8f415ef46106156cd127b26a5755a9a17192f1564b01e209ef8b45e7ce3020cb9e0deed8d9107c7737f5ab576776a0dbd55ae9a965936f776f7cadb35b55156d596b557b555dbd28d77602cc18cdcf3e15a6438b31be13b07df3a0c7c174b0723c808130f90d3ca1fc245e36ef89de02d5a1c0fcbd38a47017491f8d278d89356baeb85c3a815f8a31edc5d1e6b8387536904be33531e8fd0d2ca6301a0ced528f4062e95818700993444a92932d2b56674bc97e3b8a68340c1747c5cd17a030bac5eab5bb546ab51aed9f66ed96c19b5f276aba595adbd6dcdded51a8d6a6b3b2bb0b38182c97868dd98ba22106622052714328aa779326f7ca75ca96586190bbb3ada9fd53133da43b71df43b52baf911472819ed232fc295fd0c2938e6693e2402e59478ba228d70e01cb8b6e7fa9dcbcebeeb0fa9383c3b3497e87b8e3f827f1f90d4183c3355615468f048b318e43bf728ba3c841131fc5546a10749646fa76eedeed97ab9a1ee34caa6e156cb56756717724a6b6777d7b6545d6dbd03e044ff8f60e348335feece7fd5aa58e4ff12c092af666e0c7df8cf00619c78e3047a95bd6b96b80f97d1953264a40e6a834589119521fd7f095bff07504b0304140000000800874ee240b83fb3aba60100008b05000014000000786c2f736861726564537472696e67732e786d6c95944f4bc3301887ef82dfa1e4ae6d52dd1f69bb832078f3a01fa06c712bace95c32d19b22220ab281a2a0080a6e1361ec22ce0df1cbb8aef3e457b075b040a2b01cf3fbe57d200f2fb1727b7e59dbc555ea05c40670d1001a26f9a0e091a20db636d7163240a3cc2505b71c106c837d4c41ce999fb328655a3c4ba80d4a8c5556749de64bd877e96250c1246eb683aaefb2f8582deab452c56e819630667e59478691d27dd72340cb0735c26c60a6815623de4e0daf4e03c7a29e6331271cd4c37acfd29963e949324947f5c670f018752ec3f3dee8faf5ebfa45ba717a105d3efdd3dd3547838634f19b8ebbadd1d1f11fddf8e4797d43cce1e7c161d8be081be76283e226aa77a2415b6ccc64a6d3fae3554b49d3bcfa7ae843716839aec6dddef0ed6cf87e3fee1e0efbadf0f6233a3df97ebf11efa6a618245669054c668a31454c5601038d296749e4c0c4dfaccf8289d2899e650994489d19c43da724908a68c84da725908a6ac85d6724908a6cc46567451052918db86c68482415db88db86d25a2315dd88eb86d2662315df88fb86d2722315e126170ea5f5366733aec79fa9f303504b0304140000000800874ee240ace32fd4cb010000df0300000f000000786c2f776f726b626f6f6b2e786d6c8d535d6f9b30147d9fb4ff60f99d184868030a54a104ad52535569966e4f93072658051bd966a49af6df6743e8873a4d3c5ddfe3738fef975757a7ba02bf889094b3103a331b02c2329e53760ce1d77d6a2d21900ab31c579c91103e1309afa2cf9f561d174f3f397f025a80c910964a350142322b498de58c3784e99b828b1a2bed8a23928d2038972521aaae906bdb17a8c694c141211053347851d08c243c6b6bc2d420224885954e5f96b491305a15b42287a122809be60ed73aef53054185a5dae454913c8473edf28ebc021e04a26de29656fad69fdb2e44d14b91f7423ba6da03259d7cc58d0b3aca72de3dd25c9521742ffd85961ab02f841e4ba5dbea7aae67f4d01b8dbe115aabb780f5593e98e638bae3c6dee844f45904541fc44deef40a635886abec5e00637aa2efd8ae6f18e4a46ea5ea2d68050de1efd85bc6f6dc77ad45eaa4d6c2f16d2b8e2f169697a473efd249ae375efa671cc3c928161f6651d34c70c90b35cb788d86317c98a8b3447d34c1aa157a51a2d5a01618343da32f603100e7d2df3d10ec1253ca39fa7fc407bda81599484e0f1389d777dbfd7622f776b3fff1984e25afb771b29ece5fef76ebeffbcdb7f109f4cf86223d73bd5ce3e4d1f837a3bf504b03040a0000000000874ee240000000000000000000000000060000005f72656c732f504b0304140000000800874ee2407b3876bcff000000df0200000b0000005f72656c732f2e72656c73ad92cf4ac43010c6ef82ef10e6be4d771511d9742f22ec4d647d80984cffd026139259edbebd41512cd4ba078f99f9e69bdf7c64bb1bdd205e31a68ebc82755182406fc876be51f07c7858dd8248acbdd503795470c204bbeaf262fb8483e63c94da2e24915d7c52d032873b299369d1e95450409f3b3545a7393f63238336bd6e506ecaf246c69f1e504d3cc5de2a887bbb06713885bcf96f6faaebcee03d99a343cf332be454919d756c90158c837ca3d8bf10f545060639cf72753ecbef774a87acad662d0d455c8598538adce55cbf712c99c75c4e1f8a25a0cdf940d3d3e7c2c191d15bb4cb483a8425a2ebff2432c7c4e496793e355f4872f22dab77504b03040a0000000000874ee24000000000000000000000000009000000786c2f5f72656c732f504b0304140000000800874ee240e5f0a218ed000000ba0200001a000000786c2f5f72656c732f776f726b626f6f6b2e786d6c2e72656c73ad92cf6ac3300cc6ef83bd83d17d71d28d31469d5ec6a0d7ad7b00632b7f6862074b5b9bb79fc8a159a074975c0c9f84bfef27cbdbddb9efd40f266a6330506439280c2efa36d406be0eef0f2fa0886df0b68b010d8c48b02befefb61fd859964bd4b40329710964a0611e5eb526d7606f298b0306e95431f59645a65a0fd61d6d8d7a93e7cf3afdf58072e1a9f6de40dafb2750877190e4ffbd6355b50edfa2fbee31f095084d8d4de83f39c97824c636d5c80616e54c88415f87795c1586c74e5e73a698f4adf8cd9af12c3bc2397d927a3a8b5b0cc59a0ca7988ed420f2cc7129916c4b3a1718bdf871e52f504b0304140000000800874ee240a8f15a73670100000d050000130000005b436f6e74656e745f54797065735d2e786d6cad94cb4e02311486f726bec3a45b335370618c6160e165a924e203d4f6c034f4969e82f0f69e29600241818c9b493aedf9bffffcbd0c462b6b8a2544d4ded5ac5ff558014e7aa5ddac661f9397f29e15988453c27807355b03b2d1f0fa6a305907c082aa1dd6ac49293c708eb2012bb0f2011ccd4c7db422d130ce7810722e66c06f7bbd3b2ebd4be052995a0d361c3cc1542c4c2a9e57f47be3248241563c6e16b6ac9a89108c96229153be74ea80526e091555e635d8e880376483f1a38476e677c0b6ee8da2895a41311631bd0a4b36b8f2721c7d404e86aabf558ed8f4d3a996401a0b4b1154d0b6ac4095812421260d3f9eff644b1fe172f82ea3b6fa62e20293b797330f1a9659e64cf8ca706c4404f59e229d48ec4cc71041286c009235d59ef6eea81c8bbdf591d606fedd40163d414e74a980e76fbf730059e604f0cbc7f9a7f7f3ceb0c3b429f5ca0aedcee0e72d42da7daae9def5be91b6bf2cbcf3c1f36336fc06504b01021400140000000800874ee240a8f15a73670100000d0500001300000000000000010020000000ae2a00005b436f6e74656e745f54797065735d2e786d6c504b010214000a0000000000874ee2400000000000000000000000000600000000000000000010000000162800005f72656c732f504b01021400140000000800874ee2407b3876bcff000000df0200000b000000000000000100200000003a2800005f72656c732f2e72656c73504b010214000a0000000000874ee240000000000000000000000000090000000000000000001000000000000000646f6350726f70732f504b01021400140000000800874ee240bb37d9af3001000034020000100000000000000001002000000027000000646f6350726f70732f6170702e786d6c504b01021400140000000800874ee240fa49ffbd350100003b020000110000000000000001002000000085010000646f6350726f70732f636f72652e786d6c504b01021400140000000800874ee2407749ae132a010000110200001300000000000000010020000000e9020000646f6350726f70732f637573746f6d2e786d6c504b010214000a0000000000874ee240000000000000000000000000030000000000000000001000000044040000786c2f504b010214000a0000000000874ee240000000000000000000000000090000000000000000001000000062290000786c2f5f72656c732f504b01021400140000000800874ee240e5f0a218ed000000ba0200001a0000000000000001002000000089290000786c2f5f72656c732f776f726b626f6f6b2e786d6c2e72656c73504b01021400140000000800874ee240b83fb3aba60100008b050000140000000000000001002000000046240000786c2f736861726564537472696e67732e786d6c504b01021400140000000800874ee240ff6e5a8eaf0c0000756100000d000000000000000100200000006c170000786c2f7374796c65732e786d6c504b010214000a0000000000874ee240000000000000000000000000090000000000000000001000000028100000786c2f7468656d652f504b01021400140000000800874ee240c78c1ed4ec060000741d000013000000000000000100200000004f100000786c2f7468656d652f7468656d65312e786d6c504b01021400140000000800874ee240ace32fd4cb010000df0300000f000000000000000100200000001e260000786c2f776f726b626f6f6b2e786d6c504b010214000a0000000000874ee2400000000000000000000000000e0000000000000000001000000065040000786c2f776f726b7368656574732f504b01021400140000000800874ee2407264bedf610b0000133c0000180000000000000001002000000091040000786c2f776f726b7368656574732f7368656574312e786d6c504b0506000000001100110007040000462c00000000')
+    return binary_data
+
+# ——————————————————————
+# 随机生成基础信息
+# ——————————————————————
+def generate_random_chinese_name():
+    first_names = ['王', '李', '张', '刘', '陈', '杨', '赵', '黄', '周', '吴']
+    last_names  = ['伟', '芳', '娜', '敏', '静', '秀英', '丽', '强', '磊', '军']
+    return random.choice(first_names) + random.choice(last_names)
+
+def generate_random_chinese_class():
+    class_names = ['网络', '物联网', '信安', '移动互联']
+    return random.choice(class_names) + str(random.randint(1000, 9999))
+
+def generate_random_chinese_number():
+    return str(random.randint(10**9, 10**11 - 1))
+
+# ——————————————————————
+# 奖项与图片生成
+# ——————————————————————
+def generate_random_chinese_award():
+    award_list = ["码蹄杯", "蓝桥杯", "西门子杯", "网络安全", "全国职业技能大赛"]
+    grade_list = ["国奖", "省奖", "校奖", "市奖", "院奖"]
+    return random.choice(award_list) + random.choice(grade_list)
+
+def generate_random_chinese_award_img():
+    img_list = [
+        "https://pics0.baidu.com/feed/0e2442a7d933c8959b2c26032f0464fe82020019.jpeg",
+        "https://pics4.baidu.com/feed/a2cc7cd98d1001e91284fb12d96e6ee255e797e5.jpeg",
+        "https://pics6.baidu.com/feed/18d8bc3eb13533fa9cf6bda9c9b3e81140345b66.jpeg",
+        "https://pics0.baidu.com/feed/0824ab18972bd4077a0bfd7819e98b5f0db309d0.jpeg"
+    ]
+    return random.choice(img_list)
+
+def get_award_list():
+    """
+    生成一个人的奖项列表：
+      - 若 RANDOM_AWARDS_COUNT=True，则随机 n∈[0, MAX_AWARDS]
+      - 若 RANDOM_AWARDS_COUNT=False，则 n = MAX_AWARDS
+    返回格式：[[奖项1, 图片1], [奖项2, 图片2], …]
+    """
+    if RANDOM_AWARDS_COUNT:
+        n = random.randint(1, MAX_AWARDS)
+    else:
+        n = MAX_AWARDS
+
+    awards = []
+    for _ in range(n):
+        awards.append([
+            generate_random_chinese_award(),
+            generate_random_chinese_award_img()
+        ])
+    return awards
+
+# ——————————————————————
+# 写入 Excel 的坐标函数（保持原逻辑）
+# ——————————————————————
+df = None
+null_file = 'null.xlsx'
+path_file = 'path_to_your_file.xlsx'
+
+def coordinate_writing(index, G, value):
+    """
+    在 df 的第 index 行第 G 列写入 value，并保存为 path_to_your_file.xlsx
+    """
+    if 1 <= index <= len(df) and 1 <= G <= len(df.columns):
+        df.iloc[index - 1, G - 1] = value
+        df.to_excel(path_file, index=False)
+        logger.debug(f"已填充 行{index} 列{G}: {value} 并保存。")
+    else:
+        logger.debug("行号或列号超出范围，请检查。")
+
+def award_writing(index, param, value):
+    """
+    从 param 列开始，按 [奖项, 图片] 两列依次写入 value 列表的内容
+    """
+    if 1 <= index <= len(df):
+        col = param
+        for award, img in value:
+            try:
+                df.iat[index - 1, col - 1] = award
+            except:
+                pass
+            try:
+                df.iat[index - 1, col] = img
+            except:
+                pass
+            col += 2
+        df.to_excel(path_file, index=False)
+
+# ——————————————————————
+# 按步骤填充：1-姓名 2-班级 3-学号 4-奖项列表
+# ——————————————————————
+def run(step):
+    if step == 1:
+        for i in range(1, QUANTITY + 1):
+            coordinate_writing(i, 7, generate_random_chinese_name())
+    elif step == 2:
+        for i in range(1, QUANTITY + 1):
+            coordinate_writing(i, 8, generate_random_chinese_class())
+    elif step == 3:
+        for i in range(1, QUANTITY + 1):
+            coordinate_writing(i, 9, generate_random_chinese_number())
+    elif step == 4:
+        for i in range(1, QUANTITY + 1):
+            award_writing(i, 10, get_award_list())
+
+# ——————————————————————
+# 主构建流程
+# ——————————————————————
+def build():
+    global df
+    # 若不存在原始文件，则先用嵌入式数据生成 null.xlsx
+    if not os.path.exists(path_file):
+        with open(null_file, 'wb') as f:
+            f.write(get_embedded_file())
+        df = pd.read_excel(null_file)
+        # 按 4 步填充
+        for step in range(1, 5):
+            run(step)
+        os.remove(null_file)
+
+# ——————————————————————
+# 脚本直接运行也可触发 build
+# ——————————————————————
+if __name__ == "__main__":
+    try:
+        build()
+        logger.info("buid_null: 构建完成。")
+    except Exception as e:
+        log_exception(logger, e, "buid_null 构建失败")
+
+——————
+E:\部门\奖项证书收集\OVER\build_list.py
+————————
+import pandas as pd
+from logger import get_logger, log_exception
+
+logger = get_logger(__name__)
+
+# Load the Excel file
+def build():
+    try:
+        file_path = 'path_to_your_file.xlsx'  # 请替换为您的实际文件路径
+        logger.debug(f'正在从 {file_path}加载Excel文件')
+        excel_data = pd.ExcelFile(file_path)
+
+        # Load data from the first sheet
+        data = pd.read_excel(file_path, sheet_name='Sheet1')
+        logger.debug('Excel数据加载成功')
+
+        # Extract the required columns
+        columns_of_interest = ['3、学号', '1、姓名', '2、班级'] + \
+                              [col for col in data.columns if '奖项' in col and '请上传证书图片' not in col] + \
+                              [col for col in data.columns if '请上传证书图片' in col]
+
+        # Rename the columns for better readability
+        column_mapping = {
+            '3、学号': '学号',
+            '1、姓名': '姓名',
+            '2、班级': '班级',
+        }
+        for i in range(1, 51):
+            column_mapping[f'{4 + (i-1)*2}、奖项{i}'] = f'奖项{i}'
+            column_mapping[f'{5 + (i-1)*2}、请上传证书图片：'] = f'证书图片{i}'
+
+        data = data[columns_of_interest].rename(columns=column_mapping)
+        logger.debug('已成功重命名列')
+
+        # Combine awards and certificate images into a single column
+        def combine_awards(row):
+            awards = []
+            for i in range(1, 51):
+                award = row.get(f'奖项{i}', '(空)')
+                image = row.get(f'证书图片{i}', '(空)')
+                if (award == "(空)" and image == "(空)"):
+                    continue
+                if not pd.isna(award) or not pd.isna(image):
+                    awards.append({'奖项': award if not pd.isna(award) else '无名字', '证书图片': image if not pd.isna(image) else '无图片'})
+            return awards
+
+        data['奖项'] = data.apply(combine_awards, axis=1)
+        logger.debug('奖项合并成功')
+
+        # Select relevant columns and remove individual award columns
+        final_data = data[['学号', '姓名', '班级', '奖项']]
+
+        # Merge duplicate 学号 by combining their awards
+        final_data = final_data.groupby('学号').agg({
+            '姓名': 'first',
+            '班级': 'first',
+            '奖项': 'sum'
+        }).reset_index()
+
+        # Calculate the number of unique awards for each person
+        # final_data['总奖项数'] = final_data['奖项'].apply(lambda x: len({award['奖项'] for award in x}))
+        final_data['总奖项数'] = final_data['奖项'].apply(lambda x: len(x))
+
+        # 打印结果
+        # logger.info('Final data prepared')
+        # print(final_data)
+
+        # 保存最终数据到一个新的Excel文件
+        output_path = 'Build_Summary.xlsx'
+        final_data.to_excel(output_path, index=False)
+        logger.debug(f'最终数据保存到 {output_path}')
+    except Exception as e:
+        log_exception(logger, e, '生成过程中出错')
+
+
+# 🍊🐟 🐱
+——————
+E:\部门\奖项证书收集\OVER\config.py
+————————
+# config.py
+
+FILE_PATH = 'Build_Summary.xlsx'
+NEW_FILE_PATH = 'newFile.xlsx'
+DB_PATH = "student.db"
+QUANTITY = 10
+MAX_AWARDS = 20
+RANDOM_AWARDS_COUNT = True
+USE_RANDOM_DATA = True
+
+——————
+E:\部门\奖项证书收集\OVER\data_loader.py
+————————
+import tkinter as tk
+from tkinter import messagebox, filedialog
+import buid_null
+import build_list
+from config import FILE_PATH, USE_RANDOM_DATA
+import logger
+
+log = logger.get_logger(__name__)
+
+class StartupDialog(tk.Toplevel):
+    """程序启动时的数据源选择对话框"""
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.choice = None
+        self.title("请选择数据源")
+        tk.Label(self, text="请选择数据加载方式：", font=("Arial", 14)).pack(padx=20, pady=10)
+        frame = tk.Frame(self)
+        frame.pack(pady=10)
+        tk.Button(frame, text="从新文件加载", width=15,
+                  command=lambda: self._select('new')).grid(row=0, column=0, padx=5)
+        tk.Button(frame, text="从上次文件加载", width=15,
+                  command=lambda: self._select('last')).grid(row=0, column=1, padx=5)
+        tk.Button(frame, text="使用随机数据测试", width=15,
+                  command=lambda: self._select('random')).grid(row=0, column=2, padx=5)
+        self.protocol("WM_DELETE_WINDOW", lambda: None)
+        self.transient(parent)
+        self.grab_set()
+        parent.wait_window(self)
+    def _select(self, choice):
+        self.choice = choice
+        self.destroy()
+
+
+def initialize_data(root):
+    """
+    根据用户选择：
+      - 'new'  弹文件对话框载入任意新文件
+      - 'last' 载入 config.FILE_PATH
+      - 'random' 若 USE_RANDOM_DATA 则 buid_null.build(), 否则退回 'last'
+    生成或构建 Build_Summary.xlsx
+    """
+    dlg = StartupDialog(root)
+    choice = dlg.choice
+
+    if choice == 'new':
+        path = filedialog.askopenfilename(
+            title="请选择新的 Excel 文件",
+            filetypes=[("Excel 文件", "*.xlsx *.xls")]
+        )
+        if not path:
+            messagebox.showerror("错误", "未选择文件，程序退出。")
+            root.destroy()
+            return False
+        build_list.build(path)
+    elif choice == 'last':
+        build_list.build(FILE_PATH)
+    elif choice == 'random':
+        if USE_RANDOM_DATA:
+            buid_null.build()
+        else:
+            log.info("随机数据被禁用，使用上次文件加载。")
+            build_list.build(FILE_PATH)
+    else:
+        messagebox.showerror("错误", "未选择加载方式，程序退出。")
+        root.destroy()
+        return False
+
+    return True
+
+——————
+E:\部门\奖项证书收集\OVER\data_processing.py
+————————
+# data_processing.py
+
+import pandas as pd
+import ast
+from config import FILE_PATH, NEW_FILE_PATH
+
+def load_data():
+    df = pd.read_excel(FILE_PATH)
+    df['奖项'] = df['奖项'].apply(lambda x: ast.literal_eval(x) if pd.notna(x) else [])
+    df['已录入奖项数'] = df['奖项'].apply(len)
+    return df
+
+def load_new_data():
+    new_data = pd.read_excel(NEW_FILE_PATH)
+    award_columns = [f'奖项{i}' for i in range(1, 51)]
+    for col in award_columns:
+        if col not in new_data.columns:
+            new_data[col] = ""
+        else:
+            new_data[col] = new_data[col].fillna("").astype(str)
+    return new_data
+
+——————
+E:\部门\奖项证书收集\OVER\db_operation.py
+————————
+import sqlite3
+from logger import get_logger
+from config import DB_PATH
+
+logger = get_logger(__name__)
+
+def init_db():
+    logger.debug("初始化数据库")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS students (
+        student_id INTEGER PRIMARY KEY,
+        cert_total_points REAL DEFAULT 0.0,
+        award_total_points REAL DEFAULT 0.0
+    )
+    ''')
+    conn.commit()
+    conn.close()
+
+
+def write_db(id,label,index,val1,val2):
+    print("学号"+ str(id))
+    print("类型" +label)
+    print("索引" + str(index))
+    print("证书总分"+str(val1))
+    print("奖项总分"+str(val2))
+    # 打开数据库连接
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    logger.debug("数据库链接成功")
+    # 确保表存在
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS students (
+        student_id INTEGER PRIMARY KEY,
+        cert_total_points REAL DEFAULT 0.0,
+        award_total_points REAL DEFAULT 0.0
+    )
+    ''')
+
+
+    # 更新奖项数据
+    #TODO 将学号做键，更新证书总分与奖项总分
+    cursor.execute('''
+    INSERT INTO students (student_id, cert_total_points, award_total_points)
+    VALUES (?, ?, ?)
+    ON CONFLICT(student_id) DO UPDATE SET
+        cert_total_points=excluded.cert_total_points,
+        award_total_points=excluded.award_total_points
+    ''', (id, val1, val2))
+    conn.commit()
+    conn.close()
+    logger.debug("数据存入成功")
+
+init_db()
+
+——————
+E:\部门\奖项证书收集\OVER\events.py
+————————
+# events.py
+
+import file_operations
+import logger
+from config import NEW_FILE_PATH
+from award_dialog import AwardDialog
+
+log = logger.get_logger(__name__)
+
+class EventHandlers:
+    def __init__(self, app):
+        self.app = app
+
+    def update_treeview(self):
+        try:
+            for row in self.app.gui_elements.tree.get_children():
+                self.app.gui_elements.tree.delete(row)
+
+            for _, row in self.app.filtered_df.iterrows():
+                student_id = row["学号"]
+                if str(student_id) in self.app.new_data['学号'].astype(str).values:
+                    new_award_count = self.app.new_data[self.app.new_data['学号'].astype(str) == str(student_id)]['已录入奖项数'].values[0]
+                else:
+                    new_award_count = 0
+                awards_count = f"{new_award_count}/{row['总奖项数']}"
+                self.app.gui_elements.tree.insert("", "end", values=(row["学号"], row["姓名"], row["班级"], awards_count))
+        except Exception as ex:
+            logger.log_exception(log, ex, "Error updating treeview")
+
+    def refresh_data(self):
+        try:
+            self.app.new_data = file_operations.load_new_data(NEW_FILE_PATH)
+            self.update_treeview()
+        except Exception as ex:
+            logger.log_exception(log, ex, "Error refreshing data")
+
+    def search(self):
+        try:
+            query = self.app.gui_elements.search_entry.get()
+            if query:
+                self.app.filtered_df = self.app.df[self.app.df['姓名'].str.contains(query) | self.app.df['学号'].astype(str).str.contains(query)]
+            else:
+                self.app.filtered_df = self.app.df.copy()
+            self.update_treeview()
+        except Exception as ex:
+            logger.log_exception(log, ex, "Error searching data")
+
+    def filter_data(self, event):
+        try:
+            filter_value = self.app.gui_elements.filter_combobox.get()
+            if filter_value == "已录入完成":
+                self.app.filtered_df = self.app.df[self.app.df.apply(lambda row: str(row["学号"]) in self.app.new_data['学号'].astype(str).values and
+                                                                                 self.app.new_data[self.app.new_data['学号'].astype(str) == str(row["学号"])]["已录入奖项数"].values[0] == row["总奖项数"], axis=1)]
+            elif filter_value == "未录入完成":
+                self.app.filtered_df = self.app.df[self.app.df.apply(lambda row: str(row["学号"]) not in self.app.new_data['学号'].astype(str).values or
+                                                                                 self.app.new_data[self.app.new_data['学号'].astype(str) == str(row["学号"])]["已录入奖项数"].values[0] < row["总奖项数"], axis=1)]
+            else:
+                self.app.filtered_df = self.app.df.copy()
+            self.update_treeview()
+        except Exception as ex:
+            logger.log_exception(log, ex, "Error filtering data")
+
+    def open_award_dialog(self, event):
+        try:
+            selected_item = self.app.gui_elements.tree.selection()[0]
+            student_id = self.app.gui_elements.tree.item(selected_item, "values")[0]
+            self.app.award_dialog = AwardDialog(self.app.root, student_id, self.app.df, self.app.new_data, self.app)
+        except Exception as ex:
+            logger.log_exception(log, ex, "Error opening award dialog")
+
+——————
+E:\部门\奖项证书收集\OVER\file_operations.py
+————————
+# file_operations.py
+
+import pandas as pd
+import ast
+from logger import get_logger, log_exception
+
+logger = get_logger(__name__)
+
+def load_data(file_path):
+    df = pd.read_excel(file_path)
+    logger.debug(df['奖项'])
+    df['奖项'] = df['奖项'].apply(ast.literal_eval)
+    df['已录入奖项数'] = df['奖项'].apply(len)
+    return df
+
+def load_new_data(file_path):
+    new_data = pd.read_excel(file_path)
+    award_columns = [f'奖项{i}' for i in range(1, 51)]
+    for col in award_columns:
+        if col not in new_data.columns:
+            new_data[col] = ""
+        else:
+            new_data[col] = new_data[col].fillna("").astype(str)
+    return new_data
+
+def save_new_data(new_data, file_path):
+    new_data.to_excel(file_path, index=False)
+
+——————
+E:\部门\奖项证书收集\OVER\gui_elements.py
+————————
+# gui_elements.py
+
+import tkinter as tk
+from tkinter import ttk
+
+class GUIElements:
+    def __init__(self, root, search_callback, filter_callback):
+        self.root = root
+        self.search_callback = search_callback
+        self.filter_callback = filter_callback
+        self.create_top_frame()
+        self.create_middle_frame()
+
+    def create_top_frame(self):
+        self.top_frame = tk.Frame(self.root)
+        self.top_frame.pack(side=tk.TOP, fill=tk.X)
+
+        self.search_label = tk.Label(self.top_frame, text="查找:")
+        self.search_label.pack(side=tk.LEFT, padx=5, pady=5)
+
+        self.search_entry = tk.Entry(self.top_frame)
+        self.search_entry.pack(side=tk.LEFT, padx=5, pady=5)
+
+        self.search_button = tk.Button(self.top_frame, text="查找", command=self.search_callback)
+        self.search_button.pack(side=tk.LEFT, padx=5, pady=5)
+
+        self.filter_combobox = ttk.Combobox(self.top_frame, values=["全部", "已录入完成", "未录入完成"])
+        self.filter_combobox.pack(side=tk.LEFT, padx=5, pady=5)
+        self.filter_combobox.current(0)
+        self.filter_combobox.bind("<<ComboboxSelected>>", self.filter_callback)
+
+    def create_middle_frame(self):
+        self.middle_frame = tk.Frame(self.root)
+        self.middle_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        self.tree = ttk.Treeview(self.middle_frame, columns=("学号", "姓名", "班级", "奖项"), show="headings")
+        self.tree.heading("学号", text="学号")
+        self.tree.heading("姓名", text="姓名")
+        self.tree.heading("班级", text="班级")
+        self.tree.heading("奖项", text="奖项")
+
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.scrollbar = ttk.Scrollbar(self.middle_frame, orient="vertical", command=self.tree.yview)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.tree.configure(yscroll=self.scrollbar.set)
+
+——————
+E:\部门\奖项证书收集\OVER\image_utils.py
+————————
+# image_utils.py
+
+import threading
+import requests
+from PIL import Image, ImageTk, ImageOps
+from io import BytesIO
+import queue
+import logger
+
+# 获取日志记录器
+log = logger.get_logger(__name__)
+
+class ImageLoader:
+    def __init__(self):
+        self.image_queue = queue.Queue()
+
+    def load_image(self, url, callback):
+        def _load_image():
+            try:
+                response = requests.get(url)
+                image_data = response.content
+                image = Image.open(BytesIO(image_data))
+                callback(image)
+            except Exception as ex:
+                logger.log_exception(log, ex, f"Error loading image from {url}")
+
+        threading.Thread(target=_load_image).start()
+
+    @staticmethod
+    def resize_image(image, width, height):
+        aspect_ratio = image.width / image.height
+        if width / height > aspect_ratio:
+            new_height = height
+            new_width = int(new_height * aspect_ratio)
+        else:
+            new_width = width
+            new_height = int(new_width / aspect_ratio)
+        return image.resize((new_width, new_height), Image.LANCZOS)
+
+    @staticmethod
+    def rotate_image(image, degrees):
+        return image.rotate(degrees, expand=True)
+
+    @staticmethod
+    def mirror_image(image):
+        return ImageOps.mirror(image)
+
+——————
+E:\部门\奖项证书收集\OVER\logger.py
+————————
+# logger.py
+
+import logging
+
+# 配置日志记录
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    handlers=[logging.FileHandler("app.log"), logging.StreamHandler()])
+# 🍊🐟🐱
+def get_logger(name):
+    return logging.getLogger(name)
+
+def log_exception(logger, ex, message=""):
+    logger.error(message, exc_info=ex)
+
+——————
+E:\部门\奖项证书收集\OVER\main.py
+————————
+# main.py
+
+import tkinter as tk
+
+import buid_null
+import file_operations
+import template_initializer
+from gui_elements import GUIElements
+from config import FILE_PATH, NEW_FILE_PATH,USE_RANDOM_DATA
+import logger
+from events import EventHandlers
+
+# 获取日志记录器
+log = logger.get_logger(__name__)
+
+class AwardApp:
+    def __init__(self, root):
+        if USE_RANDOM_DATA:
+            buid_null.build()
+        template_initializer.initialize_template()
+        self.root = root
+        self.root.title("奖项管理系统 of 🍊🐟")
+        self.root.geometry("1000x600")
+        log.debug("橙子鱼与猫")
+        try:
+            self.df = file_operations.load_data(FILE_PATH)
+            self.filtered_df = self.df.copy()
+            self.new_data = file_operations.load_new_data(NEW_FILE_PATH)
+
+            award_columns = [f'奖项{i}' for i in range(1, 51)]
+            for col in award_columns:
+                self.new_data[col] = self.new_data[col].fillna("").astype(str)
+
+            self.event_handlers = EventHandlers(self)
+            self.update_treeview = self.event_handlers.update_treeview
+            self.refresh_data = self.event_handlers.refresh_data
+            self.search = self.event_handlers.search
+            self.filter_data = self.event_handlers.filter_data
+            self.open_award_dialog = self.event_handlers.open_award_dialog
+
+            self.gui_elements = GUIElements(self.root, self.search, self.filter_data)
+            self.gui_elements.tree.bind("<Double-1>", self.open_award_dialog)
+
+            self.update_treeview()
+        except Exception as ex:
+            logger.log_exception(log, ex, "Error initializing AwardApp")
+
+if __name__ == "__main__":
+    try:
+        root = tk.Tk()
+        app = AwardApp(root)
+        root.mainloop()
+    except Exception as ex:
+        logger.log_exception(log, ex, "Error running main application")
+
+——————
+E:\部门\奖项证书收集\OVER\README.md
+————————
+
+# 奖项管理系统 
+
+## 简介
+
+该项目是一个奖项管理系统，旨在管理和展示奖项信息。系统从Excel文件中读取数据，并在图形用户界面中进行展示和操作。项目包括多个模块，每个模块负责特定的功能，如数据读取、模板初始化、图像处理等。
+
+## 目录结构
+
+```
+project/
+│
+├── main.py
+├── award_app.py
+├── award_dialog.py
+├── gui_elements.py
+├── build_list.py
+├── template_initializer.py
+├── file_operations.py
+├── image_utils.py
+├── logger.py
+├── requirements.txt
+└── README.md
+```
+
+## 文件和模块说明
+### config.py
+- **功能**: 程序配置。
+- **参数**:
+  - **FILE_PATH**:生成中间文件文件路径
+  - **NEW_FILE_PATH**:数据持久化文件文件路径
+  - **DB_PATH**:数据库文件文件路径
+  - **QUANTITY**:随机生成的人数
+  - **MAX_AWARDS**:最大随机奖项数
+  - **RANDOM_AWARDS_COUNT**:是否在[1,MAX_AWARDS]范围内随机
+### main.py
+
+- **功能**: 初始化主程序，包括日志配置和主窗口创建。
+- **主要方法**:
+  - `__init__(self)`: 初始化主程序，包括日志配置和主窗口创建。调用`AwardApp`初始化整个应用程序。
+    - **参数**: 无
+    - **返回**: 无
+    - **说明**: 该方法初始化日志配置，并创建主窗口对象，启动奖项应用程序。
+  - `AwardApp.__init__(self, root)`: 初始化奖项应用程序，包括加载数据和创建GUI。
+    - **参数**:
+      - `root`: 主窗口对象
+    - **返回**: 无
+    - **说明**: 该方法初始化奖项应用程序，加载数据并创建图形用户界面。
+  - `build_list.build(file_path)`: 从Excel文件中构建数据列表。
+    - **参数**:
+      - `file_path`: Excel文件路径
+    - **返回**: DataFrame对象
+    - **说明**: 该方法从指定的Excel文件中读取数据，并返回构建的数据列表。
+  - `template_initializer.initialize_template(file_path)`: 初始化模板，设置模板文件。
+    - **参数**:
+      - `file_path`: 模板文件路径
+    - **返回**: 无
+    - **说明**: 该方法初始化模板文件，设置模板相关配置。
+
+### award_app.py
+
+- **功能**: 奖项应用程序的主模块，负责加载数据和创建用户界面。
+- **主要方法**:
+  - `__init__(root)`: 初始化奖项应用程序，包括加载数据和创建GUI。设置窗口标题、大小，并加载奖项数据。
+    - **参数**:
+      - `root`: 主窗口对象
+    - **返回**: 无
+    - **说明**: 该方法初始化奖项应用程序，包括加载数据和创建图形用户界面。
+  - `get_logger()`: 获取日志实例，用于记录日志。配置日志记录器，方便调试和错误记录。
+    - **参数**: 无
+    - **返回**: Logger对象
+    - **说明**: 该方法返回一个Logger对象，用于记录日志信息。
+  - `pd.read_excel(file_path)`: 从Excel文件中读取数据。使用pandas库加载Excel文件中的奖项数据。
+    - **参数**:
+      - `file_path`: 文件路径
+    - **返回**: DataFrame对象
+    - **说明**: 该方法从指定的Excel文件中读取数据，并返回一个DataFrame对象。
+  - `create_widgets()`: 创建应用程序的GUI部件，如按钮和树状视图。初始化并布置界面元素。
+    - **参数**: 无
+    - **返回**: 无
+    - **说明**: 该方法创建并初始化所有需要的GUI控件。
+  - `update_treeview()`: 更新树状视图，显示读取的数据。将数据加载到树状视图控件中。
+    - **参数**: 无
+    - **返回**: 无
+    - **说明**: 该方法更新树状视图，显示加载的数据。
+  - `refresh_data()`: 刷新数据，重新加载并更新显示。重新从Excel文件中读取数据并更新界面显示。
+    - **参数**: 无
+    - **返回**: 无
+    - **说明**: 该方法刷新数据，从Excel文件中重新读取数据并更新显示。
+  - `search(keyword)`: 搜索功能，根据用户输入查找数据。在数据集中搜索匹配的记录并显示结果。
+    - **参数**:
+      - `keyword`: 搜索关键字
+    - **返回**: 无
+    - **说明**: 该方法根据用户输入的关键字在数据集中搜索匹配的记录并显示结果。
+  - `filter_data(condition)`: 根据条件过滤数据。应用用户指定的过滤条件，更新显示的数据。
+    - **参数**:
+      - `condition`: 过滤条件
+    - **返回**: 无
+    - **说明**: 该方法应用用户指定的过滤条件，更新显示的数据。
+  - `open_award_dialog(award_id)`: 打开奖项对话框，显示详细信息。弹出窗口显示选中奖项的详细信息和操作选项。
+    - **参数**:
+      - `award_id`: 奖项ID
+    - **返回**: 无
+    - **说明**: 该方法打开奖项对话框，显示选中奖项的详细信息和操作选项。
+
+### award_dialog.py
+
+- **功能**: 奖项详情对话框模块，显示和操作单个奖项的详细信息。
+- **主要方法**:
+  - `get_logger()`: 获取日志实例，用于记录日志。配置日志记录器，方便调试和错误记录。
+    - **参数**: 无
+    - **返回**: Logger对象
+    - **说明**: 该方法返回一个Logger对象，用于记录日志信息。
+  - `create_widgets()`: 创建对话框部件，如标签和按钮。初始化并布置界面元素。
+    - **参数**: 无
+    - **返回**: 无
+    - **说明**: 该方法创建并初始化对话框中的所有需要的GUI控件。
+  - `update_award_display(award_data)`: 更新奖项显示，显示选中的奖项信息。根据当前选中的奖项，更新对话框中的信息。
+    - **参数**:
+      - `award_data`: 奖项数据
+    - **返回**: 无
+    - **说明**: 该方法根据传入的奖项数据更新对话框中的显示内容。
+  - `load_image(image_path)`: 加载奖项的图片。从文件或URL加载图片，显示在对话框中。
+    - **参数**:
+      - `image_path`: 图片路径或URL
+    - **返回**: Image对象
+    - **说明**: 该方法从指定的文件路径或URL加载图片，并返回一个PIL.Image对象。
+  - `display_image(image)`: 显示奖项图片。在对话框中展示加载的图片。
+    - **参数**:
+      - `image`: Image对象
+    - **返回**: 无
+    - **说明**: 该方法在对话框中显示传入的PIL.Image对象。
+  - `update_button_states()`: 更新按钮状态，根据当前奖项设置按钮的可用性。根据当前的状态启用或禁用对话框中的按钮。
+    - **参数**: 无
+    - **返回**: 无
+    - **说明**: 该方法根据当前奖项的状态更新对话框中按钮的可用性。
+  - `update_award_points(new_points)`: 更新奖项积分，根据评分更新积分显示。根据用户输入的评分，更新奖项的总积分。
+    - **参数**:
+      - `new_points`: 新积分
+    - **返回**: 无
+    - **说明**: 该方法根据传入的新积分更新奖项的总积分显示。
+  - `rotate_image(angle)`: 旋转奖项图片。将显示的图片按指定角度旋转。
+    - **参数**:
+      - `angle`: 旋转角度
+    - **返回**: Image对象
+    - **说明**: 该方法将显示的图片按指定角度旋转，并返回旋转后的PIL.Image对象。
+  - `mirror_image()`: 镜像奖项图片。将显示的图片水平翻转。
+    - **参数**: 无
+    - **返回**: Image对象
+    - **说明**: 该方法将显示的图片水平翻转，并返回镜像后的PIL.Image对象。
+  - `prev_award()`: 显示上一个奖项。加载并显示列表中的上一个奖项。
+    - **参数**: 无
+    - **返回**: 无
+    - **说明**: 该方法加载并显示奖项列表中的上一个奖项。
+  - `next_award()`: 显示下一个奖项。加载并显示列表中的下一个奖项。
+    - **参数**: 无
+    - **返回**: 无
+    - **说明**: 该方法加载并显示奖项列表中的下一个奖项。
+    
+### gui_elements.py
+
+- **功能**: GUI元素模块，创建和管理应用程序的基本图形元素。
+- **主要方法**:
+  - `__init__(root)`: 初始化GUI元素，包括按钮和标签的创建。设置界面基本元素。
+    - **参数**:
+      - `root`: 主窗口对象
+    - **返回**: 无
+    - **说明**: 该方法初始化GUI元素，包括创建按钮和标签等界面基本元素。
+  - `create_widgets()`: 创建所有的GUI部件。初始化并布置所有需要的控件。
+    - **参数**: 无
+    - **返回**: 无
+    - **说明**: 该方法创建并初始化所有需要的GUI控件。
+  - `update_treeview(data)`: 更新树状视图，显示当前数据。刷新树状视图中的数据。
+    - **参数**:
+      - `data`: 数据集
+    - **返回**: 无
+    - **说明**: 该方法更新树状视图，显示传入的数据集。
+  - `update_status(status)`: 更新状态栏，显示当前状态。在状态栏中显示应用程序当前的状态信息。
+    - **参数**:
+      - `status`: 状态信息
+    - **返回**: 无
+    - **说明**: 该方法更新状态栏，显示传入的状态信息。
+
+### buid_null.py
+- **功能**: 构建随机初始文档。
+- **主要方法**:
+  - `build()`: 构建随机初始文档。
+    - **参数**:无
+    - **返回**: 无
+    - **说明**: 随机生成数据。
+
+### build_list.py
+
+- **功能**: 构建数据列表模块，从Excel文件中读取并处理数据。
+- **主要方法**:
+  - `build(file_path)`: 从Excel文件中构建数据列表。读取Excel文件并转换为可操作的数据结构。
+    - **参数**:
+      - `file_path`: 文件路径
+    - **返回**: DataFrame对象
+    - **说明**: 该方法接受Excel文件的路径，读取文件并将数据转换为pandas的DataFrame对象。
+  - `get_logger()`: 获取日志实例，用于记录日志。配置日志记录器，方便调试和错误记录。
+    - **参数**: 无
+    - **返回**: Logger对象
+    - **说明**: 该方法返回一个Logger对象，用于记录日志信息。
+  - `pd.ExcelFile(file_path)`: 加载Excel文件。使用pandas库加载Excel文件。
+    - **参数**:
+      - `file_path`: 文件路径
+    - **返回**: ExcelFile对象
+    - **说明**: 该方法接受文件路径，使用pandas的ExcelFile类加载Excel文件。
+  - `pd.read_excel(file_path)`: 从Excel文件中读取工作表。将Excel工作表转换为pandas DataFrame。
+    - **参数**:
+      - `file_path`: 文件路径
+    - **返回**: DataFrame对象
+    - **说明**: 该方法接受Excel文件的路径，使用pandas的read_excel函数读取工作表并返回DataFrame对象。
+  - `logger.info(message)`: 记录信息日志。在日志中记录常规操作信息。
+    - **参数**:
+      - `message`: 信息字符串
+    - **返回**: 无
+    - **说明**: 该方法记录一条信息级别的日志，用于记录常规操作信息。
+  - `pd.DataFrame.groupby(by)`: 在DataFrame中分组数据。按指定列对数据进行分组。
+    - **参数**:
+      - `by`: 分组列名
+    - **返回**: GroupBy对象
+    - **说明**: 该方法在DataFrame中按指定列名分组数据。
+  - `pd.DataFrame.agg(aggregation)`: 聚合数据。对分组数据应用聚合函数。
+    - **参数**:
+      - `aggregation`: 聚合函数
+    - **返回**: DataFrame对象
+    - **说明**: 该方法对分组数据应用聚合函数，返回聚合后的DataFrame对象。
+  - `pd.DataFrame.reset_index()`: 重置DataFrame的索引。重置索引，使分组后的结果成为新的DataFrame。
+    - **参数**: 无
+    - **返回**: DataFrame对象
+    - **说明**: 该方法重置DataFrame的索引，使其成为新的DataFrame。
+  - `pd.DataFrame.to_excel(file_path)`: 将DataFrame保存到Excel文件。将处理后的数据写入Excel文件。
+    - **参数**:
+      - `file_path`: 文件路径
+    - **返回**: 无
+    - **说明**: 该方法将DataFrame保存到指定路径的Excel文件中。
+  - `logger.debug(message)`: 记录调试日志。在日志中记录调试信息。
+    - **参数**:
+      - `message`: 调试信息字符串
+    - **返回**: 无
+    - **说明**: 该方法记录一条调试级别的日志信息。
+  - `logger.error(message)`: 记录错误日志。在日志中记录错误信息。
+    - **参数**:
+      - `message`: 错误信息字符串
+    - **返回**: 无
+    - **说明**: 该方法记录一条错误级别的日志信息。
+
+### template_initializer.py
+
+- **功能**: 模板初始化模块，设置和管理模板文件。
+- **主要方法**:
+  - `initialize_template(file_path)`: 初始化模板，设置模板文件。
+    - **参数**:
+      - `file_path`: 模板文件路径
+    - **返回**: 无
+    - **说明**: 该方法接受模板文件路径，初始化并设置模板文件。
+  - `get_logger(name)`: 获取日志实例，用于记录日志。
+    - **参数**:
+      - `name`: 日志记录器的名称
+    - **返回**: Logger 对象
+    - **说明**: 该方法获取一个日志记录器实例，用于记录日志信息。
+  - `logger.debug(msg)`: 记录调试日志。
+    - **参数**:
+      - `msg`: 调试信息
+    - **返回**: 无
+    - **说明**: 该方法记录一条调试级别的日志信息。
+  - `get_embedded_file(file_name)`: 获取嵌入的文件内容。
+    - **参数**:
+      - `file_name`: 嵌入文件的名称
+    - **返回**: 字节数据
+    - **说明**: 该方法获取嵌入文件的内容，并以字节数据形式返回。
+  - `bytes.fromhex(hex_str)`: 将十六进制字符串转换为字节数据。
+    - **参数**:
+      - `hex_str`: 十六进制字符串
+    - **返回**: 字节数据
+    - **说明**: 该方法将十六进制字符串转换为字节数据。
+  - `build(data, template)`: 使用模板构建数据列表。
+    - **参数**:
+      - `data`: 数据列表
+      - `template`: 模板文件
+    - **返回**: 构建后的数据列表
+    - **说明**: 该方法接受数据列表和模板文件，使用模板构建并返回新的数据列表。
+
+### file_operations.py
+
+- **功能**: 文件操作模块，负责数据文件的读写操作。
+- **主要方法**:
+  - `save_new_data(data, file_path)`: 保存新数据到文件，确保数据持久化。
+    - **参数**:
+      - `data`: 要保存的数据
+      - `file_path`: 保存数据的文件路径
+
+### image_utils.py
+
+- **功能**: 图像处理模块，处理奖项图片的加载、调整和转换。
+- **主要方法**:
+  - `load_image(file_path)`: 加载图像文件，返回图像对象。
+    - **参数**:
+      - `file_path`: 图像文件的路径
+    - **返回**: PIL.Image 对象
+    - **说明**: 该方法接受一个参数，即图像文件的路径，使用 PIL 库加载图像并返回一个 PIL.Image 对象。
+  - `resize_image(image, size)`: 调整图像大小，返回调整后的图像。
+    - **参数**:
+      - `image`: PIL.Image 对象
+      - `size`: 调整后的尺寸 (宽, 高)
+    - **返回**: 调整后的 PIL.Image 对象
+    - **说明**: 该方法接受一个 PIL.Image 对象和一个新的尺寸（宽, 高），返回调整后的图像对象。
+  - `rotate_image(image, angle)`: 旋转图像，返回旋转后的图像。
+    - **参数**:
+      - `image`: PIL.Image 对象
+      - `angle`: 旋转角度
+    - **返回**: 旋转后的 PIL.Image 对象
+    - **说明**: 该方法接受一个 PIL.Image 对象和旋转角度，返回旋转后的图像对象。
+  - `mirror_image(image)`: 镜像图像，返回镜像后的图像。
+    - **参数**:
+      - `image`: PIL.Image 对象
+    - **返回**: 镜像后的 PIL.Image 对象
+    - **说明**: 该方法接受一个 PIL.Image 对象，返回镜像后的图像对象。
+
+### db_operation.py
+- **功能**: 数据库模块，配置和管理数据库。
+- **主要方法**:
+- `write_db(id,label,index,val1,val2)`: 基本日志配置，设置日志格式和级别。
+  - **参数**:
+    - `id`: 学号
+    - `label`: 按键类型
+    - `index`: 奖状索引
+    - `val1`:证书总分
+    - `val2`:奖状总分
+  - **返回**: 无
+  - **说明**: 该方法用于根据参数更新数据库
+### logger.py
+
+- **功能**: 日志模块，配置和管理日志记录。
+- **主要方法**:
+  - `logging.basicConfig(**kwargs)`: 基本日志配置，设置日志格式和级别。
+    - **参数**:
+      - `**kwargs`: 日志配置参数，例如格式、级别等
+    - **返回**: 无
+    - **说明**: 该方法用于配置日志系统的基础设置，例如日志格式、日志级别等。
+  - `logging.FileHandler(filename)`: 文件处理程序，用于将日志写入文件。
+    - **参数**:
+      - `filename`: 日志文件的路径
+    - **返回**: FileHandler 对象
+    - **说明**: 该方法创建一个文件处理程序，将日志信息写入指定的文件中。
+  - `logging.StreamHandler(stream)`: 流处理程序，用于将日志输出到控制台。
+    - **参数**:
+      - `stream`: 日志输出流（默认输出到控制台）
+    - **返回**: StreamHandler 对象
+    - **说明**: 该方法创建一个流处理程序，将日志信息输出到控制台或指定的流中。
+  - `logging.getLogger(name)`: 获取日志实例。
+    - **参数**:
+      - `name`: 日志记录器的名称
+    - **返回**: Logger 对象
+    - **说明**: 该方法获取一个日志记录器实例，用于记录日志信息。
+  - `logging.error(msg)`: 记录错误日志。
+    - **参数**:
+      - `msg`: 错误信息
+    - **返回**: 无
+    - **说明**: 该方法记录一条错误级别的日志信息。
+  - `log_exception(logger, exception)`: 记录异常日志。
+    - **参数**:
+      - `logger`: Logger 对象
+      - `exception`: 异常对象
+    - **返回**: 无
+    - **说明**: 该方法接受一个 Logger 对象和一个异常对象，将异常信息记录到日志中。
+
+## 安装和运行
+
+### 环境要求
+
+- Python 3.x
+- 依赖库：请参考`requirements.txt`
+
+### 安装步骤
+
+1. 克隆或下载项目代码。
+2. 安装依赖库：
+   ```bash
+   pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+   ```
+3. 运行主程序：
+  项目目录需要包含`path_to_your_file.xlsx`文件
+   ```bash
+   python main.py
+   ```
+
+## 使用说明
+
+1. 启动程序后，主窗口将显示奖项数据的树状视图。
+2. 用户可以通过搜索框搜索特定的奖项数据。
+3. 点击树状视图中的奖项条目，将打开奖项详情对话框，显示详细信息和相关图片。
+4. 在奖项详情对话框中，用户可以旋转或镜像图片，并更新奖项积分。
+
+## 贡献指南
+
+欢迎贡献代码和报告问题。请遵循以下步骤：
+
+1. 
+2. 
+3. 
+4. 
+5. 
+
+## 项目时序图
+
+![test3.png](test3.png)
+
+### of 🍊🐟🐱
+
+——————
+E:\部门\奖项证书收集\OVER\template_initializer.py
+————————
+import os
+
+import build_list
+from logger import get_logger, log_exception
+
+logger = get_logger(__name__)
+
+def get_embedded_file():
+    binary_data = bytes.fromhex('504b03040a0000000000874ee24000000000000000000000000009000000646f6350726f70732f504b0304140000000800874ee240ce425c01310100003902000010000000646f6350726f70732f6170702e786d6c9d91c14a03311086ef82ef1072af698b88946c8aa0e2452c58bdc7ec6c1bd84d42665c5a9fc58b07c137f0e4db28f8186637a05bf1e46d26ffcf3fdf4fe47cd3d4ac8588d6bb824f0ec69c8133beb46e55f09be5f9e8983324ed4a5d7b0705df02f2b9dadf938be80344b2802c45382cf89a28cc8440b38646e341925d522a1f1b4d698d2be1abca1a38f5e6be0147623a1e1f09d810b812ca51f80ee43971d6d27f434b6f3a3ebc5d6e430256f22484da1a4da9a5bab4267af415b1b38d815a8aa1282f4077e517da4654b2a5590b867c64681f52fd2967771aa18b2d78aba3d58e527c67cb4b3fd70129aa8fd7e7f7b7c7cfa71729929edffa71681dcef6504d7a431a768d5d40e648c22ee1d2520d78552d74a43f802743e09e21e3669ceb3500e59b43bebe71baf42b5bfcfcb9fa02504b0304140000000800874ee2400d80cd4b420100005c02000011000000646f6350726f70732f636f72652e786d6c8d924d4ec3301085f748dc21f23eb1d3b415b2925402d41595902802b1b3ec691b113b966d48b3e45edc892be0fc34a482054bcf7bf3cd9b91d3d55196c13b185b542a43714450008a57a250fb0c3d6ed7e1150aac634ab0b25290a1062c5ae5971729d7945706ee4da5c1b8026ce049ca52ae3374704e538c2d3f806436f20ee5c55d652473fe69f65833fecaf68067842cb104c704730cb7c0508f443420051f91facd941d40700c254850cee2388af18fd78191f6cf864e993865e11aed771ae24ed982f7e2e83eda6234d6751dd54917c3e78ff1f3e6eea15b352c547b2b0e284f05a7dc007395c9dbfd75732c533c29b6072c99751b7feb5d01e2bac9bf3e3f52fcbbec515df29e0722f059689ffca43c2537b7db35ca6764360fc9224ce22d496832a784bcb453cffadb6c7d410eb3ff4f5cd06439219e007997fbfc3fe4df504b0304140000000800874ee2404e95df512a0100001102000013000000646f6350726f70732f637573746f6d2e786d6ca5915d4bc3301486ef05ff43c87d9b8faeeb3ada8eb5cd40bc5050772b254db7429394249d0ef1bf9b31a778e18d5e1ececbc3f39e93ad5ee5000ec2d85eab1c9210432014d76daf76397c7adc040b08ac6b54db0c5a891c1e8585abe2fa2abb377a14c6f5c2028f5036877be7c6254296ef856c6ce8d7ca6f3a6d64e3fc687648775dcf45adf924857288623c477cb24ecb60fcc2c1336f79707f45b69a9fececf6f1387add22fb841f41275ddfe6f0ad8eabba8e711c50965601c1a40cd2284d02bcc09896b4daa46bf60ec1780a530854237df59b6aeb5907b71cc617eb4c51cfd698b1324a2b16cf6246d7c443098b932a49e8262a9f09cdd0773c43178d7f0a4517a1db873bdfb39db82ba77e68b7c2fcf0a338a601a1a17f6a48e6094d7fb341a76b9d7f597c00504b03040a0000000000874ee24000000000000000000000000003000000786c2f504b03040a0000000000874ee2400000000000000000000000000e000000786c2f776f726b7368656574732f504b0304140000000800874ee2401dd718f8670500002a25000018000000786c2f776f726b7368656574732f7368656574312e786d6c8d9a59739b3a1886efcfccf90f1eeeeb0d9c6dec7424effbbede112cc74c31f80089db7f7f84a9dd203edee99dade78d2cdef008b751f5fbcf9393fb147e607b6e4d2be58b5a4eb896b7b7ddf79ab65cb4be3d69b92034ddbde978aea869bf44a07d7ffdf79feac5f37f044721c29c9cc10d6ada310ccf2f8542601dc5c90cf2de59b8921c3cff6486f2adff5e08cebe30f7d71f3a398572b1f8503899b6abc533bcf87f33877738d8966878d6c749b8613c892f1c3394eb0f8ef639b8cdf673ff57f3ed7df322aff5b69e2f4b6cc4e43e5fc948adef645bbe177887306f79a742bcb4f4553e179e13d779b2521311659d4cffc7c7f99b9cf82c2feecd76ecf0d7f5726f0b12e19f792e974bfe720ef296fb7b155f0a2a3d164458ff0842efd43043537bad5e7f0313bff05adddbb2c5e8579ff3c5a1a6b1d20b6f3c6a125c232b5b5c822faf73a1f936178eb042b197f78a968bee8137cffb1105bb72a8184d7e0d44539a56687f8aba701c397359de46ffc51f527e593c459f51b87fc8d7d7b70f6c5d6f9c899fdb8b83f9e18475cf59dbfbf058d39eb5dbd8ccbb7484fd7e0ce56af47c45cb791fa163bb62203e8523614d7bb85f4c74edaf55dfbbe4e47d21d71e9ccde8ae2dbd541ee4aaad689445c35728270ce4e8e76bb15af894abb37e27783a514a26eae944399968a4137a32d14c278c64a2954e549289763af1904c74d289c764a29b4e3c2513bd74e23999e8a71325a5d40111515a1d1211a5d61111517a1d1311a5d80911519a9d1211a5da191151ba9d1311a5dc051151da5da62365a5dd151151da5d1311a5dd0d1151dadd1211a5dd1d1151da65848465a55e46685856fa6594884ac18c50b1ac34cc081975a56246e8a82b1d3342485d2999114aea4acb8c9052576a668496bada3321a6aef64c98a9ab3d136aea6acf849bbada3321a7a1f64cd869a83d137a1a6acf849f86da3321a8a1f64c186aa83d138a1a6acf84a386da3321a9a1f64c586aa83d139a56d49e094f2b4acf9cf0b4a2f4cc094f2b4acf9cf0b4a2f4cc094f2b7f7a2ec887fafdc91e7dcf889fece5af8ff6a51cbf3fd42b4aff2b04d7086e10dc22b84390455f973297cb38a475481b9036216d41da86b4036917d21ea47d4807900e211d413a867402e914d219a473481790420d18f480411118348141151874814317387481431778960b890d45cfd850e478a6a12b04d7086e10dc22b84390314839a475481b9036216d41da86b4036917d21ea47d4807900e211d413a867402e914d219a4734817902e21851e302802832630a802832e70e802872e70e802cf7221b1a118191b8a1ccfde50105c23b841708be00e41c620e590d6216d40da84b405691bd20ea45d487b90f6211d403a847404e918d209a453486790ce215d40ba84740529148141131854814117387481431738748167b990d850e4ff7b92ffe491e3d91b0a826b0437086e11dc21c818a41cd23aa40d489b90b6206d43da81b40b690fd23ea4034887908e201d433a81740ae90cd239a40b489790ae208522306802832a30e802872e70e802872ef02c17121bca43c68622c7b3371404d7086e10dc22b84390314839a475481b9036216d41da86b4036917d21ea47d4807900e211d413a867402e914d219a4734817902e215d410a4560d004065560d0050e5de0d0050e5de0592e243694c78c0d458e676f2808ae11dc20b84570872063907248eb90cabfb96717c19a90b6206d43da81b40b690fd23ea4034887908e201d433a81740ae90cd239a40b489790ae208522306802832a30e802872e70e802872e44e74f4817e20d253e33129fe5389bef6268faefb61be41c71903b4931ff28bfcff9f18990f84de89daf273adebc501e80b9be3cca4348421ef7284627460e9e17dedec83329316b5d07a3232af7534eafff03504b03040a0000000000874ee24000000000000000000000000009000000786c2f7468656d652f504b0304140000000800874ee240f4f40adf6e0600003d1b000013000000786c2f7468656d652f7468656d65312e786d6ced594f6fdb3614bf0fd87720746f6d27b61b07758ad8b19bad4d1bc46e871e6999965853a240d2497d1bdae38001c3ba619701bbed306c2bd002bb749f265b87ad03fa15f6484ab218cb4bd2061bd6d58744227f7cffdfe32375f5da8388a1432224e571dbab5dae7a88c43e1fd338687b7786fd4b1b1e920ac763cc784cdade9c48efdad6fbef5dc59b2a241141b03e969bb8ed854a259b958af46118cbcb3c2131cc4db888b082571154c6021f01dd8855d6aad56625c234f6508c23207b7b32a13e41434dd2dbca88f718bcc64aea019f8981264d9c15063b9ed63442ce659709748859db033e637e34240f948718960a26da5ed5fcbccad6d50ade4c1731b5626d615ddffcd275e982f174cdf014c128675aebd75b577672fa06c0d432aed7eb757bb59c9e0160df074dad2c459af5fe46ad93d12c80ece332ed6eb551adbbf802fdf525995b9d4ea7d14a65b1440dc83ed697f01bd5667d7bcdc11b90c53796f0f5ce76b7db74f00664f1cd257cff4aab5977f10614321a4f97d0daa1fd7e4a3d874c38db2d856f007ca39ac2172888863cba348b098fd5aa588bf07d2efa00d04086158d919a2764827d88e22e8e468262cd006f125c98b143be5c1ad2bc90f4054d54dbfb30c190110b7aaf9e7fffeaf953f4eaf993e387cf8e1ffe74fce8d1f1c31f2d2d67e12e8e83e2c297df7ef6e7d71fa33f9e7ef3f2f117e57859c4fffac327bffcfc793910326821d18b2f9ffcf6ecc98baf3efdfdbbc725f06d814745f8904644a25be4081df0087433867125272371be15c3105367050e817609e99e0a1de0ad396665b80e718d775740f128035e9fdd77641d8462a66809e71b61e400f738671d2e4a0d7043f32a5878388b8372e66256c41d607c58c6bb8b63c7b5bd590255330b4ac7f6dd903862ee331c2b1c909828a4e7f8949012edee51ead8758ffa824b3e51e81e451d4c4b4d32a4232790168b7669047e9997e90cae766cb3771775382bd37a871cba484808cc4a841f12e698f13a9e291c95911ce288150d7e13abb04cc8c15cf8455c4f2af074401847bd3191b26ccd6d01fa169c7e0343bd2a75fb1e9b472e52283a2da37913735e44eef06937c45152861dd0382c623f905308518cf6b92a83ef713743f43bf801c72bdd7d9712c7dda717823b3470445a04889e9909ed4b28d44efd8d68fc77c59851a8c63606de15e3b6b70d5b53594aec9e28c1ab70ffc1c2bb8367f13e81585fde78ded5dd7775d77bebebeeaa5c3e6bb55d1458a8bdba79b07db1e992a3954df28432365073466e4ad3274bd82cc67d18d4ebcc0191e487a62484c7b4b83bb84060b30609ae3ea22a1c8438811ebbe66922814c490712255cc2d9ce0c97d2d678e8d3953d1936f499c1d60389d51e1fdbe1753d9c1d0d723266cb09ccf93363b4ae099c95d9fa959428a8fd3acc6a5aa83373ab19d14ca973b8e52a830f975583c1dc9ad08520e85dc0ca4d38a26bd67036c18c8cb5dded069cb9c578e1225d24433c26a98fb4decb3eaa192765b1622e0320764a7ca4cf79a758adc0ada5c9be01b7b338a9c8aebe825de6bd37f15216c10b2fe9bc3d918e2c2e26278bd151db6b35d61a1ef271d2f62670ac85c72801af4bddf86116c0dd90af840dfb5393d964f9c29bad4c3137096a705361edbea4b053071221d50e96a10d0d339586008b35272bff5a03cc7a510ad8487f0d29d6372018fe3529c08eae6bc964427c5574766144dbcebea6a594cf141183707c84466c260e30b85f872ae833a6126e274c45d02f7095a6ad6da6dce29c265df102cbe0ec38664988d372ab5334cb640b37799ccb60de0ae2816ea5b21be5ceaf8a49f90b52a518c6ff3355f47e02d705eb63ed011f6e7205463a5fdb1e172ae450859290fa7d018d83a91d102d701d0bd31054709f6cfe0b72a8ffdb9cb3344c5ac3a94f1dd000090afb910a0521fb50964cf49d42ac96ee5d96244b0999882a882b132bf6881c1236d435b0a9f7760f8510eaa69aa465c0e04ec69ffb9e66d028d04d4e31df9c1a92efbd3607fee9cec7263328e5d661d3d064f6cf452cd955ed7ab33cdb7b8b8ae889459b55cfb2029815b682569af6af29c239b75a5bb196345e6b64c28117973586c1bc214ae0d207e93fb0ff51e133fb71426fa8437e00b515c1b7064d0cc206a2fa926d3c902e907670048d931db4c1a44959d3a6ad93b65ab6595f70a79bf33d616c2dd959fc7d4e63e7cd99cbcec9c58b34766a61c7d6766ca5a9c1b32753148626d941c638c67cd52a7e78e2a3fbe0e81db8e29f31252d6d03dafa0b504b0304140000000800874ee240f5009a08400a00007f4f00000d000000786c2f7374796c65732e786d6cd55ced8fdb4819ff8ec4ff60b9820f88ddc42f79eb6db634d9b574d2814e6a91900055dec4d9b570e2c571aadd4348855e5938542454a0703a89e34ea57ca00b1c88ab8e6bef9f69d2dd4ffc0b3c33637b9e49c6b15bf2e26ca48dedccf3fe9be799f18cbd73eda4ef29b79d60e8fa83a6aa6d9755c51974fcae3b386caadfbe696dd5556518da83aeedf903a7a99e3a43f5daee97bfb4330c4f3de7c691e3840ab0180c9bea51181e5f2d95869d23a76f0fb7fd636700bff4fca06f87701a1c9686c78163778784a8ef95f472b95aeadbee40651caef63b7998f4ede007a3e3ad8edf3fb643f7c0f5dcf094f252957ee7ea9b87033fb00f3c50f52468c49ce1708675dfed04fed0ef85dbc0aae4f77a6ec799d150ab9602e7b64bbcd350777706a3bed50f874ac71f0dc2a66a269714f6cb9b5db8a8a90a33baed77418d5bcad7942b5fbf72a57c4b79831c7f6f0b9f7df587233f7c638b7dd116dfb8a5a8a55814e6ab4ff36544fffde2113bc062667ec252677e64177229614c2b1149dd2e4fd9c72f08dcaf5d9b6fa439cd7f4659eabd98fbccaf919da9bfcf51a614457777a7e70f7890751da24caeecee0cdf516edb1e74138d44a8e37b7ea08480768832bd32b0fb0e6b313effe58b670f68ab233b18422761848649aed12e12b5ecbb005872b1c464b0ff07a495206d71bc45becbb46234630593161c1e3455cb2ac39f6511db338d2be7735b86c03a08ac53568b1228f365641db36f91d609a0a813ce42f08c5cb2b4bc1074e707af66914f2e91398327985759b6798234eaba653a5390369b3d161cba39a8342cc3aa55897317d505d24c8bba0111682c0f27c89771bfbb5edb2b2fb493675868d1bf45ba744efcac9559f74a852d67179f63180c06b5c5866d8eb0461b2ac1427bc15c61d5caf22d8bc2b550e0cb8c5a2c2ce8a06708e32bd7f39261b5619011175cd9dd81217ee804030b4e94e8f8e6e9318cb706301b215daec4da65b43e0cec534da735251fc1d0f7dc2ed1e2b04d4779716e81aede6e13b907d10feea0eb9c3830ecafd2915d09299c57b95459ed76a3b12259ba059fd5c8ba5e219fd5c86a57f7adf6fe6a6401326aab93b5df6a2c1b87514fa7b85e22dc13314ae892497579bbd66834ea5ab55eaf374c435bbdfc0ac86f18f546550735cacb86eaacfd0688af552af58ad6d04d6dd9292092bf22332bea7ac38ce4af25cc48fe5ac24c073dcbefcdd5358719c95f4b9891fcb584b9b6e49a17258dda9ac38ce4af25cc48fe5ac24c6f022dbf37c31ac05a6b3392bf963023f96b09f38a8600b05cb2d63023f96b093392ff7f86994e32615a7be0075d585b53a2f522ad0c534a766d77c7737a214c2403f7f0887c87fe319956fa6108ab51bb3b5dd73ef407b60787a59822fe2694b02807eb6f4d353c82f5b3f846b03d0afd6829a2441a45dc33db521da80a994d41cd58cbccb6cc98d7b4259a71b774f221d52cd3a2598a0cbb6609b2ac9ba5c86b2318208b74ecc3bed37547fd2490c99c80859f6022db8daf2922e9f32699769935b35c332b7a95f93caf79b11d021c236ff19582bc214414f9428808728610512cc2467e973baf8d88229f8d8820a78d88e2556decfa2358434ff01845123194a4974c9a593b3349249666d2e4b535a3bfc8e558162c22d2450748cbafd32fa53d45e8efd9360bcde7a911950ea8441dc7f36e9092f19d5e528e4cb2a5e1a487f618c0ee0fb2fe4cb6319043b8eb1a1db2d2c34ec06f029149f704302ab247414ea5d8c7c7dea905dc296f76064df9598b164b7e7edd730f077d0713bc1df8a1d309e95e15524bedb809d9c212ba1db238df010a87ada89ff4a655a5db0b364255188cc4a128ba53e986978d70aa49f7d06c84aaa82b92fe35af537d6bd43f70028b6eb4e2ddc75a75e7421a936eb6591aa33e06873cddc1094d55293e16d2d9121216f229dc39dc309fc24db00dd318eee76c98c6706b42aa31e48c79b81572c372714b0a992c171447439896cb558434561027a6aa08aae7567105032c94af609364e25588354fa990c8e6a8bc5c306a28cf4374b95290abd6a7142af082526bf514aae1a007f714e4c8f5792aad08421a9ca394b5c274a7a5553dc8834551119539d09687767e32692d7f7e86d307aa6ca06f419544c50df42da6923af16a548141df822a89aa0529761ba025685c502d51c049c1db002d850102a83f2753b6569a86748c4ba13817564ba15a174a4b8ccbc2161e9c2eb5c2561e0197c52d3db8f714b7f6205c92e8173f5f92e817544b147178726e13b42c6eedc1b82c6eedc15a16b7f6605c16b7f6602d8b5b7b70c48b5b7bb096c5ad3d28e206685cfcac6e80c605d51245dc587bed29e12577b6008fd6dec943e5c22a3ad13d73e95d39e9c9d7e0113502948027b81e53b3e9155b8b87cb74b2d58aa655f139ba0fab092bed477ee0be039aa2b576b4fa0e9b17e8662db2f44e3d0036a3dd07e2de83c4430a7918b5a98e9f3ebd78fc2ed2f360e47ab02531b17986e0fedd17cfee8f7ffeb3cbf77f13938101888c3dd91b6f7e88e45cfcebf1f8e94f620282142e873e6e322de7e51f9e8390c9df122164ccc069e8b313d33463a4db77cbdf8fa5913ace29e976fc694aa61ea2215595d3d0bddd3334ffbe77f9e0f9e4578f6239a4c6711af6b4f8941bc69f7e7271fec5e5c3f397efbf7b314d4faa0fa7a73b50a7654efef997cbb3f76281a4107002b88703fb44a6292e9efc79fcebf726bf3b9b7cf0d7988ea46644c71ee89dd274f2e1d9e547bf8f29e8fd21442275ffc5e38f41b9c99dc7a234b22a81c455a4f860e21468ca7a0cbd8982044aa31611019a2222112330959438242282a61191080f4d1ab788089a4644223ed8134333ae7ffe607c2f4107b94b8ddc00b31e8972174072f659224544044c416424e77f7a79fe3021113101f30109c9e4e33b933f3e1adfffedf8deddc9879f27b4222e7469a018e46768e9248ec74b97f6e9c93fce2677fe138ba3332a4422c5d4f8d1b3a4bd9835742924c69f9e27ed4534e852345cdef9e98ba74f1212110bba140be3cf3fbbf8fb5dc0f8f8c9c3cb8f3eb8f8c5271cb6f0c0ab10646927d6cb5f51b694b96c44acc028451245339b8d881f184648d854b3d98898823a2f61233127e997ba082c78d858c220d52b091b3a58e380616fd598ee74a95ee16cc47c64487197ea15ce068e507f36e4709cc54a9278c00d0203293e53bdc2d9889835a4984df50a672322d7902237d52b9c8d885c538a5c095692cc6a889885573bbd0a56381b11b3b00b4dc226d52b9c8d885cd877296193ea95840db80187da94664789572026acde90375c21b09952cca66285b311316b4a319bea15ce4644ae29456eaa57381bf00f364a8a5c89570062915780156620c56caa57381b11b315296653bdc2d988c8ad48919bea15ce46446e852297cf6c60681f9297add19dc5c9d81ef0d5757af6c80b6f263f36557efc4dfab00380396af5b67bdb0f298ba6ca8fdf220fc6c0380530ee9c846f0de16916f8564681db547fb4dfaa35f6f62d7dab5e6ed5b74cc3a96c352aadbdad8ad96eeded598db25e6eff182243de4c77f544335fefed6fe546a9c1de50079335cdbc3af4e01d7141646ca4fc0d7eada9a213a63ed1be046ab3ffd488d2307973deeeff00504b0304140000000800874ee24089a92ad368010000f605000014000000786c2f736861726564537472696e67732e786d6c75d43d4ec33018c6f11d893b44dea9e38f7e80927440e2047080a8356da4c629b18b608301c4828a84caced076aa8a58aa82b80da1700b82a88454fc8cfebf7e87df6007cdb3b4e79daadc24990e09abf8c453ba95b513dd09c9d1e1c14e8378c6c6ba1df732ad4272ae0c6946db5b8131d62b77b50949d7dafe1ea5a6d555696c2a595fe972729ce5696ccb63dea1a69fabb86dba4ad9b447b9efd7681a279a78ad6ca06d48789d136fa0939381daff2dd53a89029344818d8ad9a4182e026aa380fe94759dde1777b79b75359cad5ea69bf5737ef9be9c7c5cbc1637d79bb362fcf0f5b804b3c573f1362aaec6eb4ba327f7367367eecec29da53b57ddb9e6ce75776eb8f3ae3b331f74e06400ca8094012a035606b00c6819e032e0e5c0cb8197032f075e0ebc1c7839f072e0e5c0cb815700af005e01bc027805f00ae015c02b805700af005e09bc127825f04ae095c02b815702af045e09bc1278abffbc7fef9996ff76f40d504b0304140000000800874ee240ace32fd4cb010000df0300000f000000786c2f776f726b626f6f6b2e786d6c8d535d6f9b30147d9fb4ff60f99d184868030a54a104ad52535569966e4f93072658051bd966a49af6df6743e8873a4d3c5ddfe3738fef975757a7ba02bf889094b3103a331b02c2329e53760ce1d77d6a2d21900ab31c579c91103e1309afa2cf9f561d174f3f397f025a80c910964a350142322b498de58c3784e99b828b1a2bed8a23928d2038972521aaae906bdb17a8c694c141211053347851d08c243c6b6bc2d420224885954e5f96b491305a15b42287a122809be60ed73aef53054185a5dae454913c8473edf28ebc021e04a26de29656fad69fdb2e44d14b91f7423ba6da03259d7cc58d0b3aca72de3dd25c9521742ffd85961ab02f841e4ba5dbea7aae67f4d01b8dbe115aabb780f5593e98e638bae3c6dee844f45904541fc44deef40a635886abec5e00637aa2efd8ae6f18e4a46ea5ea2d68050de1efd85bc6f6dc77ad45eaa4d6c2f16d2b8e2f169697a473efd249ae375efa671cc3c928161f6651d34c70c90b35cb788d86317c98a8b3447d34c1aa157a51a2d5a01618343da32f603100e7d2df3d10ec1253ca39fa7fc407bda81599484e0f1389d777dbfd7622f776b3fff1984e25afb771b29ece5fef76ebeffbcdb7f109f4cf86223d73bd5ce3e4d1f837a3bf504b03040a0000000000874ee240000000000000000000000000060000005f72656c732f504b0304140000000800874ee2407b3876bcff000000df0200000b0000005f72656c732f2e72656c73ad92cf4ac43010c6ef82ef10e6be4d771511d9742f22ec4d647d80984cffd026139259edbebd41512cd4ba078f99f9e69bdf7c64bb1bdd205e31a68ebc82755182406fc876be51f07c7858dd8248acbdd503795470c204bbeaf262fb8483e63c94da2e24915d7c52d032873b299369d1e95450409f3b3545a7393f63238336bd6e506ecaf246c69f1e504d3cc5de2a887bbb06713885bcf96f6faaebcee03d99a343cf332be454919d756c90158c837ca3d8bf10f545060639cf72753ecbef774a87acad662d0d455c8598538adce55cbf712c99c75c4e1f8a25a0cdf940d3d3e7c2c191d15bb4cb483a8425a2ebff2432c7c4e496793e355f4872f22dab77504b03040a0000000000874ee24000000000000000000000000009000000786c2f5f72656c732f504b0304140000000800874ee240e5f0a218ed000000ba0200001a000000786c2f5f72656c732f776f726b626f6f6b2e786d6c2e72656c73ad92cf6ac3300cc6ef83bd83d17d71d28d31469d5ec6a0d7ad7b00632b7f6862074b5b9bb79fc8a159a074975c0c9f84bfef27cbdbddb9efd40f266a6330506439280c2efa36d406be0eef0f2fa0886df0b68b010d8c48b02befefb61fd859964bd4b40329710964a0611e5eb526d7606f298b0306e95431f59645a65a0fd61d6d8d7a93e7cf3afdf58072e1a9f6de40dafb2750877190e4ffbd6355b50edfa2fbee31f095084d8d4de83f39c97824c636d5c80616e54c88415f87795c1586c74e5e73a698f4adf8cd9af12c3bc2397d927a3a8b5b0cc59a0ca7988ed420f2cc7129916c4b3a1718bdf871e52f504b0304140000000800874ee240a8f15a73670100000d050000130000005b436f6e74656e745f54797065735d2e786d6cad94cb4e02311486f726bec3a45b335370618c6160e165a924e203d4f6c034f4969e82f0f69e29600241818c9b493aedf9bffffcbd0c462b6b8a2544d4ded5ac5ff558014e7aa5ddac661f9397f29e15988453c27807355b03b2d1f0fa6a305907c082aa1dd6ac49293c708eb2012bb0f2011ccd4c7db422d130ce7810722e66c06f7bbd3b2ebd4be052995a0d361c3cc1542c4c2a9e57f47be3248241563c6e16b6ac9a89108c96229153be74ea80526e091555e635d8e880376483f1a38476e677c0b6ee8da2895a41311631bd0a4b36b8f2721c7d404e86aabf558ed8f4d3a996401a0b4b1154d0b6ac4095812421260d3f9eff644b1fe172f82ea3b6fa62e20293b797330f1a9659e64cf8ca706c4404f59e229d48ec4cc71041286c009235d59ef6eea81c8bbdf591d606fedd40163d414e74a980e76fbf730059e604f0cbc7f9a7f7f3ceb0c3b429f5ca0aedcee0e72d42da7daae9def5be91b6bf2cbcf3c1f36336fc06504b01021400140000000800874ee240a8f15a73670100000d0500001300000000000000010020000000972100005b436f6e74656e745f54797065735d2e786d6c504b010214000a0000000000874ee2400000000000000000000000000600000000000000000010000000ff1e00005f72656c732f504b01021400140000000800874ee2407b3876bcff000000df0200000b00000000000000010020000000231f00005f72656c732f2e72656c73504b010214000a0000000000874ee240000000000000000000000000090000000000000000001000000000000000646f6350726f70732f504b01021400140000000800874ee240ce425c013101000039020000100000000000000001002000000027000000646f6350726f70732f6170702e786d6c504b01021400140000000800874ee2400d80cd4b420100005c020000110000000000000001002000000086010000646f6350726f70732f636f72652e786d6c504b01021400140000000800874ee2404e95df512a010000110200001300000000000000010020000000f7020000646f6350726f70732f637573746f6d2e786d6c504b010214000a0000000000874ee240000000000000000000000000030000000000000000001000000052040000786c2f504b010214000a0000000000874ee24000000000000000000000000009000000000000000000100000004b200000786c2f5f72656c732f504b01021400140000000800874ee240e5f0a218ed000000ba0200001a0000000000000001002000000072200000786c2f5f72656c732f776f726b626f6f6b2e786d6c2e72656c73504b01021400140000000800874ee24089a92ad368010000f605000014000000000000000100200000006d1b0000786c2f736861726564537472696e67732e786d6c504b01021400140000000800874ee240f5009a08400a00007f4f00000d0000000000000001002000000002110000786c2f7374796c65732e786d6c504b010214000a0000000000874ee24000000000000000000000000009000000000000000000100000003c0a0000786c2f7468656d652f504b01021400140000000800874ee240f4f40adf6e0600003d1b00001300000000000000010020000000630a0000786c2f7468656d652f7468656d65312e786d6c504b01021400140000000800874ee240ace32fd4cb010000df0300000f00000000000000010020000000071d0000786c2f776f726b626f6f6b2e786d6c504b010214000a0000000000874ee2400000000000000000000000000e0000000000000000001000000073040000786c2f776f726b7368656574732f504b01021400140000000800874ee2401dd718f8670500002a25000018000000000000000100200000009f040000786c2f776f726b7368656574732f7368656574312e786d6c504b05060000000011001100070400002f2300000000')
+    return binary_data
+
+def initialize_template():
+    new_file_xlsx = 'newFile.xlsx'
+    if not os.path.exists('%s' % new_file_xlsx):
+        logger.debug(f"未发现目标文件{new_file_xlsx}，开始创建")
+        from template_initializer import get_embedded_file
+
+        # Restore the file from the embedded binary data
+        with open('newFile.xlsx', 'wb') as file:
+            file.write(get_embedded_file())
+        logger.debug("目标文件创建成功")
+
+    build_summary_xlsx = 'Build_Summary.xlsx'
+    if not os.path.exists(build_summary_xlsx):
+        logger.debug(f"未发现目标文件{build_summary_xlsx}，开始创建")
+        # Restore the file from the embedded binary data
+        build_list.build()
+        logger.debug("目标文件创建成功")
+
+——————
+E:\部门\奖项证书收集\OVER\test.py
+————————
+import os
+from pathlib import Path
+
+# === 配置区（按需改） ===
+PROJECT_ROOT = Path(r"E:\部门\奖项证书收集\OVER")        # 项目根目录
+# FRONT_ROOT   = PROJECT_ROOT / "frontend"            # 前端根目录
+# BACK_ROOT    = PROJECT_ROOT / "backend"             # 后端根目录
+OUT_DIR      = PROJECT_ROOT                         # 输出到项目根目录
+
+# 要包含的后缀（大小写不敏感）
+# FRONT_EXTS = {".jsx", ".js", ".tsx", ".ts", ".css", ".html", ".json"}
+# BACK_EXTS  = {".py", ".json"}
+PROJECT_EXTS  = {".py", ".json",".md"}
+
+# 需要忽略的目录名（遇到这些目录就不往里走）
+IGNORE_DIRS = {
+    "node_modules", "dist", "build", ".git", ".idea", ".vscode",
+    ".venv", "__pycache__", ".next", ".sass-cache", "coverage"
+}
+
+RECURSIVE = True   # True 递归扫描；False 只扫描根目录下一层文件
+
+# === 工具函数 ===
+def list_files(root: Path, allow_exts: set[str], ignore_dirs: set[str], recursive: bool) -> list[Path]:
+    allow_exts = {e.lower() for e in allow_exts}
+    files: list[Path] = []
+
+    if recursive:
+        for dirpath, dirnames, filenames in os.walk(root):
+            # 过滤忽略目录
+            dirnames[:] = [d for d in dirnames if d not in ignore_dirs]
+            for fn in filenames:
+                p = Path(dirpath) / fn
+                if p.suffix.lower() in allow_exts:
+                    files.append(p)
+    else:
+        for p in root.iterdir():
+            if p.is_file() and p.suffix.lower() in allow_exts:
+                files.append(p)
+
+    # 按相对路径排序，输出稳定
+    files.sort(key=lambda p: str(p.relative_to(root)).lower())
+    return files
+
+def merge_to_txt(name: str, files: list[Path], out_dir: Path):
+    output_file = out_dir / f"{name}.txt"
+    with open(output_file, "w", encoding="utf-8") as out:
+        for p in files:
+            out.write(str(p) + "\n")
+            out.write("————————\n")  # 分隔线（保留你原来的格式）
+            try:
+                with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                    out.write(f.read())
+            except Exception as e:
+                out.write(f"\n[无法读取: {e}]\n")
+            out.write("\n——————\n")
+    print("合并完成，输出文件：", output_file)
+
+if __name__ == "__main__":
+    # back_files  = list_files(BACK_ROOT,  BACK_EXTS,  IGNORE_DIRS, RECURSIVE)
+    # front_files = list_files(FRONT_ROOT, FRONT_EXTS, IGNORE_DIRS, RECURSIVE)
+    #
+    # merge_to_txt("back",  back_files,  OUT_DIR)
+    # merge_to_txt("front", front_files, OUT_DIR)
+
+    files = list_files(PROJECT_ROOT, PROJECT_EXTS, IGNORE_DIRS, RECURSIVE)
+    merge_to_txt("all", files, OUT_DIR)
+——————

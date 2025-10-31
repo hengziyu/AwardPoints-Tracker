@@ -4,50 +4,32 @@ import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
+import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
-import org.example.config.Config;
-import org.example.image.ImageLoader;
-import org.example.image.ImageTransform;
-import org.example.model.Award;
-import org.example.model.Student;
-import org.example.model.StudentAwardRecord;
+import org.example.model.*;
 import org.example.persistence.NewDataManager;
 import org.example.util.LoggerUtil;
 import org.slf4j.Logger;
+import org.example.image.ImageUtils;
+import org.example.image.ImageLoader;
+import org.example.image.ImageTransform;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * 奖项对话框 (逻辑未改)
  */
 public class AwardDialog {
     private static final Logger LOGGER = LoggerUtil.getLogger(AwardDialog.class.getName());
-    private static final Map<String, Double> SCORE_MAP = new HashMap<>();
-
-    static {
-        SCORE_MAP.put(Config.CATEGORY_CERT, Config.SCORE_CERT);
-        SCORE_MAP.put(Config.CATEGORY_NATIONAL, Config.SCORE_NATIONAL);
-        SCORE_MAP.put(Config.CATEGORY_PROVINCE_CITY, Config.SCORE_PROVINCE_CITY);
-        SCORE_MAP.put(Config.CATEGORY_SCHOOL, Config.SCORE_SCHOOL);
-        SCORE_MAP.put(Config.CATEGORY_COLLEGE, Config.SCORE_COLLEGE);
-        SCORE_MAP.put(Config.CATEGORY_NONE, Config.SCORE_NONE);
-    }
-
     private final Stage stage;
     private final Student studentData;
     private final List<Award> awards;
     private final NewDataManager newDataManager;
     private final AwardDialogListener listener;
-    private final Map<String, Button> categoryButtons = new HashMap<>();
-    private final ImageLoader imageLoader = new ImageLoader();
     private int currentAwardIndex = 0;
     private Label awardLabel;
     private Label indexLabel;
@@ -56,10 +38,22 @@ public class AwardDialog {
     private Label loadingLabel;
     private Button prevButton;
     private Button nextButton;
+    private final Map<String, Button> categoryButtons = new HashMap<>();
     private Image originalImage;
     private Image nextPreloadedImage;
     private Image prevPreloadedImage;
     private boolean imageLoading = false;
+    private final ImageLoader imageLoader = new ImageLoader();
+    private static final Map<String, Double> SCORE_MAP = new HashMap<>();
+
+    static {
+        SCORE_MAP.put("证书", 0.2);
+        SCORE_MAP.put("国", 0.8);
+        SCORE_MAP.put("省市", 0.5);
+        SCORE_MAP.put("校", 0.3);
+        SCORE_MAP.put("院", 0.2);
+        SCORE_MAP.put("无", 0.0);
+    }
 
     public AwardDialog(Stage owner, Student studentData, NewDataManager newDataManager, AwardDialogListener listener) {
         this.studentData = studentData;
@@ -89,12 +83,12 @@ public class AwardDialog {
         HBox topPanel = new HBox(10);
         topPanel.setPadding(new Insets(10));
         topPanel.setAlignment(Pos.CENTER_LEFT);
-        createCategoryButton(topPanel, Config.CATEGORY_CERT);
-        createCategoryButton(topPanel, Config.CATEGORY_NATIONAL);
-        createCategoryButton(topPanel, Config.CATEGORY_PROVINCE_CITY);
-        createCategoryButton(topPanel, Config.CATEGORY_SCHOOL);
-        createCategoryButton(topPanel, Config.CATEGORY_COLLEGE);
-        createCategoryButton(topPanel, Config.CATEGORY_NONE);
+        createCategoryButton(topPanel, "证书");
+        createCategoryButton(topPanel, "国");
+        createCategoryButton(topPanel, "省市");
+        createCategoryButton(topPanel, "校");
+        createCategoryButton(topPanel, "院");
+        createCategoryButton(topPanel, "无");
         indexLabel = new Label();
         Button rotateButton = new Button("翻转");
         rotateButton.setOnAction(e -> rotateImage());
@@ -162,11 +156,11 @@ public class AwardDialog {
             else displayPlaceholder();
             updateNavigationButtons();
         }));
-        if (Config.ENABLE_IMAGE_PRELOAD && currentAwardIndex + 1 < awards.size()) {
+        if (currentAwardIndex + 1 < awards.size()) {
             String nextUrl = awards.get(currentAwardIndex + 1).getImageUrl();
             imageLoader.loadImage(nextUrl, img -> nextPreloadedImage = img);
         } else nextPreloadedImage = null;
-        if (Config.ENABLE_IMAGE_PRELOAD && currentAwardIndex - 1 >= 0) {
+        if (currentAwardIndex - 1 >= 0) {
             String prevUrl = awards.get(currentAwardIndex - 1).getImageUrl();
             imageLoader.loadImage(prevUrl, img -> prevPreloadedImage = img);
         } else prevPreloadedImage = null;
@@ -179,8 +173,8 @@ public class AwardDialog {
         double stageW = stage.getWidth();
         double stageH = stage.getHeight();
         if (stageW <= 0 || stageH <= 0) return;
-        double availableW = Math.max(Config.IMAGE_MIN_FIT_WIDTH, stageW - Config.IMAGE_MIN_PADDING);
-        double availableH = Math.max(Config.IMAGE_MIN_FIT_HEIGHT, stageH - Config.IMAGE_MIN_VERTICAL_RESERVED);
+        double availableW = Math.max(50, stageW - 40);
+        double availableH = Math.max(50, stageH - 70 - 60 - 30 - 40);
         double imgW = originalImage.getWidth();
         double imgH = originalImage.getHeight();
         if (imgW <= 0 || imgH <= 0) return;
@@ -191,7 +185,7 @@ public class AwardDialog {
 
     private void displayPlaceholder() {
         loadingLabel.setVisible(false);
-        Image placeholder = new Image(Config.PLACEHOLDER_IMAGE, true);
+        Image placeholder = new Image("https://via.placeholder.com/800x600", true);
         this.originalImage = placeholder;
         imageView.setImage(placeholder);
         Platform.runLater(this::adjustImageSize);
@@ -268,33 +262,71 @@ public class AwardDialog {
         String previousLabel = record.getAwardLabel(currentAwardIndex);
         double scoreChange = 0.0;
         if (previousLabel.equals(label)) {
-            if (label.equals(Config.CATEGORY_CERT)) record.addCertTotalPoints(-SCORE_MAP.get(label));
-            else if (!label.equals(Config.CATEGORY_NONE) && !label.isEmpty())
-                record.addAwardTotalPoints(-SCORE_MAP.get(label));
+            if (label.equals("证书")) record.addCertTotalPoints(-SCORE_MAP.get(label));
+            else if (!label.equals("无") && !label.isEmpty()) record.addAwardTotalPoints(-SCORE_MAP.get(label));
             record.setAwardLabel(currentAwardIndex, "");
             record.decrementRecordedAwardCount();
         } else {
             if (!previousLabel.isEmpty()) {
-                if (previousLabel.equals(Config.CATEGORY_CERT))
-                    record.addCertTotalPoints(-SCORE_MAP.get(previousLabel));
-                else if (!previousLabel.equals(Config.CATEGORY_NONE))
-                    record.addAwardTotalPoints(-SCORE_MAP.get(previousLabel));
+                if (previousLabel.equals("证书")) record.addCertTotalPoints(-SCORE_MAP.get(previousLabel));
+                else if (!previousLabel.equals("无")) record.addAwardTotalPoints(-SCORE_MAP.get(previousLabel));
             }
-            if (label.equals(Config.CATEGORY_CERT)) {
+            if (label.equals("证书")) {
                 record.addCertTotalPoints(SCORE_MAP.get(label));
                 scoreChange = SCORE_MAP.get(label);
-            } else if (!label.equals(Config.CATEGORY_NONE)) {
+            } else if (!label.equals("无")) {
                 record.addAwardTotalPoints(SCORE_MAP.get(label));
                 scoreChange = SCORE_MAP.get(label);
             }
-            if (previousLabel.isEmpty() && !label.equals(Config.CATEGORY_NONE)) { // '无' 不计入
-                record.incrementRecordedAwardCount();
-            }
-            record.setAwardLabel(currentAwardIndex, label.equals(Config.CATEGORY_NONE) ? "" : label);
+            if (previousLabel.isEmpty() && !label.equals("无")) record.incrementRecordedAwardCount();
+            record.setAwardLabel(currentAwardIndex, label);
         }
         newDataManager.persistRecord(record);
         updateButtonStates();
         if (listener != null) listener.onDataUpdated();
         LOGGER.debug("学生=" + studentData.getStudentId() + " 奖项索引=" + currentAwardIndex + " 标签=" + label + " 变化=" + scoreChange);
     }
-}
+}package org.example.image;
+
+ import javafx.application.Platform;
+ import javafx.scene.image.Image;
+ import okhttp3.OkHttpClient;
+ import okhttp3.Request;
+ import okhttp3.Response;
+ import org.example.util.LoggerUtil;
+ import org.slf4j.Logger;
+
+ import java.io.InputStream;
+ import java.util.concurrent.ExecutorService;
+ import java.util.concurrent.Executors;
+ import java.util.function.Consumer;
+
+ public class ImageLoader {
+     private static final Logger LOGGER = LoggerUtil.getLogger(ImageLoader.class.getName());
+     private final OkHttpClient client = new OkHttpClient();
+     private final ExecutorService executor = Executors.newCachedThreadPool();
+
+     public void loadImage(String url, Consumer<Image> callback) {
+         if (url == null || url.isEmpty()) {
+             Platform.runLater(() -> callback.accept(null));
+             return;
+         }
+         executor.submit(() -> {
+             Image image = null;
+             try {
+                 Request request = new Request.Builder().url(url).build();
+                 try (Response response = client.newCall(request).execute()) {
+                     if (response.isSuccessful() && response.body() != null) {
+                         try (InputStream is = response.body().byteStream()) {
+                             image = new Image(is);
+                         }
+                     }
+                 }
+             } catch (Exception ex) {
+                 LoggerUtil.logException(LOGGER, ex, "Error loading image from " + url);
+             }
+             Image finalImage = image;
+             Platform.runLater(() -> callback.accept(finalImage));
+         });
+     }
+ }

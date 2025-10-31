@@ -28,15 +28,15 @@ public final class TemplateInitializer {
         File f = new File(Config.NEW_FILE_PATH);
         if (f.exists()) return;
         try (Workbook wb = new XSSFWorkbook()) {
-            Sheet sheet = wb.createSheet("Sheet1");
+            Sheet sheet = wb.createSheet(Config.SHEET_MAIN);
             Row header = sheet.createRow(0);
-            header.createCell(0).setCellValue("学号");
-            header.createCell(1).setCellValue("姓名");
-            header.createCell(2).setCellValue("班级");
-            header.createCell(3).setCellValue("证书总分");
-            header.createCell(4).setCellValue("奖项总分");
-            header.createCell(5).setCellValue("已录入奖项数");
-            for (int i = 0; i < 50; i++) header.createCell(6 + i).setCellValue("奖项" + (i + 1));
+            header.createCell(0).setCellValue(Config.COL_STUDENT_ID);
+            header.createCell(1).setCellValue(Config.COL_NAME);
+            header.createCell(2).setCellValue(Config.COL_CLASS);
+            header.createCell(3).setCellValue(Config.COL_CERT_TOTAL);
+            header.createCell(4).setCellValue(Config.COL_AWARD_TOTAL);
+            header.createCell(5).setCellValue(Config.COL_RECORDED_COUNT);
+            for (int i = 0; i < 50; i++) header.createCell(6 + i).setCellValue(Config.COL_AWARD_LABEL_PREFIX + (i + 1));
             try (FileOutputStream fos = new FileOutputStream(f)) {
                 wb.write(fos);
             }
@@ -50,11 +50,11 @@ public final class TemplateInitializer {
         File f = new File(Config.FILE_PATH);
         if (f.exists()) return;
         try (Workbook wb = new XSSFWorkbook()) {
-            Sheet sheet = wb.createSheet("Sheet1");
+            Sheet sheet = wb.createSheet(Config.SHEET_MAIN);
             Row header = sheet.createRow(0);
-            header.createCell(0).setCellValue("学号");
-            header.createCell(1).setCellValue("姓名");
-            header.createCell(2).setCellValue("班级");
+            header.createCell(0).setCellValue(Config.COL_STUDENT_ID);
+            header.createCell(1).setCellValue(Config.COL_NAME);
+            header.createCell(2).setCellValue(Config.COL_CLASS);
             header.createCell(3).setCellValue("奖项");
             header.createCell(4).setCellValue("总奖项数");
             try (FileOutputStream fos = new FileOutputStream(f)) {

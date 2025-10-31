@@ -2,6 +2,7 @@ package org.example.build;
 
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.example.config.Config;
 import org.example.util.LoggerUtil;
 import org.slf4j.Logger;
 
@@ -21,11 +22,11 @@ import java.util.Random;
  */
 public class BuildNull {
     private static final Logger LOGGER = LoggerUtil.getLogger(BuildNull.class.getName());
-    private static final int QUANTITY = 10;
-    private static final int MAX_AWARDS = 20;
-    private static final boolean RANDOM_AWARDS_COUNT = true;
-    private static final String NULL_FILE = "null.xlsx";
-    private static final String PATH_FILE = "Raw_Source.xlsx";
+    private static final int QUANTITY = Config.QUANTITY;
+    private static final int MAX_AWARDS = Config.MAX_AWARDS;
+    private static final boolean RANDOM_AWARDS_COUNT = Config.RANDOM_AWARDS_COUNT;
+    private static final String NULL_FILE = Config.NULL_TEMPLATE_FILE;
+    private static final String PATH_FILE = Config.SOURCE_PATH;
     private final Random random = new Random();
     private int dataRowOffset = 0;
     private Workbook workbook;
@@ -77,11 +78,11 @@ public class BuildNull {
             }
             try (FileInputStream fis = new FileInputStream(PATH_FILE)) {
                 workbook = WorkbookFactory.create(fis);
-                sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : workbook.createSheet("Sheet1");
+                sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : workbook.createSheet(Config.SHEET_MAIN);
             } catch (Exception ex) {
                 LoggerUtil.logException(LOGGER, ex, "复制后仍无法打开, 回退创建新工作簿");
                 workbook = new XSSFWorkbook();
-                sheet = workbook.createSheet("Sheet1");
+                sheet = workbook.createSheet(Config.SHEET_MAIN);
                 ensureHeader();
             }
             ensureHeader();
@@ -104,7 +105,7 @@ public class BuildNull {
         if (!template.exists()) {
             LOGGER.warn("模板文件缺失, 创建空工作簿替代。");
             workbook = new XSSFWorkbook();
-            sheet = workbook.createSheet("Sheet1");
+            sheet = workbook.createSheet(Config.SHEET_MAIN);
             ensureHeader();
             try (FileOutputStream fos = new FileOutputStream(PATH_FILE)) {
                 workbook.write(fos);
@@ -143,31 +144,30 @@ public class BuildNull {
     }
 
     private String generateRandomChineseName() {
-        String[] first = {"王", "李", "张", "刘", "陈", "杨", "赵", "黄", "周", "吴"};
-        String[] last = {"伟", "芳", "娜", "敏", "静", "秀英", "丽", "强", "磊", "军"};
+        String[] first = Config.RANDOM_SURNAME_POOL;
+        String[] last = Config.RANDOM_GIVEN_NAME_POOL;
         return first[random.nextInt(first.length)] + last[random.nextInt(last.length)];
     }
 
     private String generateRandomChineseClass() {
-        String[] classNames = {"网络", "物联网", "信安", "移动互联"};
-        return classNames[random.nextInt(classNames.length)] + (1000 + random.nextInt(9000));
+        String[] prefixes = Config.RANDOM_CLASS_PREFIX_POOL;
+        return prefixes[random.nextInt(prefixes.length)] + (Config.CLASS_SUFFIX_MIN + random.nextInt(Config.CLASS_SUFFIX_MAX - Config.CLASS_SUFFIX_MIN + 1));
     }
 
     private String generateRandomChineseNumber() {
-        long min = (long) Math.pow(10, 9);
-        long max = (long) Math.pow(10, 11) - 1;
-        long val = min + (Math.abs(random.nextLong()) % (max - min + 1));
+        long span = Config.STUDENT_ID_MAX - Config.STUDENT_ID_MIN + 1;
+        long val = Config.STUDENT_ID_MIN + (Math.abs(random.nextLong()) % span);
         return String.valueOf(val);
     }
 
     private String generateRandomChineseAward() {
-        String[] awardList = {"码蹄杯", "蓝桥杯", "西门子杯", "网络安全", "全国职业技能大赛"};
-        String[] gradeList = {"国奖", "省奖", "校奖", "市奖", "院奖"};
+        String[] awardList = Config.RANDOM_AWARD_NAME_POOL;
+        String[] gradeList = Config.RANDOM_AWARD_GRADE_POOL;
         return awardList[random.nextInt(awardList.length)] + gradeList[random.nextInt(gradeList.length)];
     }
 
     private String generateRandomChineseAwardImg() {
-        String[] img = {"https://pics0.baidu.com/feed/0e2442a7d933c8959b2c26032f0464fe82020019.jpeg", "https://pics4.baidu.com/feed/a2cc7cd98d1001e91284fb12d96e6ee255e797e5.jpeg", "https://pics6.baidu.com/feed/18d8bc3eb13533fa9cf6bda9c9b3e81140345b66.jpeg", "https://pics0.baidu.com/feed/0824ab18972bd4077a0bfd7819e98b5f0db309d0.jpeg"};
+        String[] img = Config.RANDOM_IMAGE_POOL;
         return img[random.nextInt(img.length)];
     }
 
@@ -231,4 +231,3 @@ public class BuildNull {
         }
     }
 }
-

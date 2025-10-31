@@ -29,9 +29,9 @@ public class BuildList {
             return;
         }
         try (FileInputStream fis = new FileInputStream(src); Workbook wb = new XSSFWorkbook(fis)) {
-            Sheet sheet = wb.getSheet("Sheet1");
+            Sheet sheet = wb.getSheet(Config.SHEET_MAIN);
             if (sheet == null) {
-                LOGGER.error("未找到 Sheet1 工作表");
+                LOGGER.error("未找到 " + Config.SHEET_MAIN + " 工作表");
                 return;
             }
             Row headerRow = sheet.getRow(0);
@@ -116,11 +116,11 @@ public class BuildList {
 
     private void writeSummary(List<AggregatedStudent> students) throws IOException {
         try (Workbook wb = new XSSFWorkbook()) {
-            Sheet sheet = wb.createSheet("Sheet1");
+            Sheet sheet = wb.createSheet(Config.SHEET_MAIN);
             Row header = sheet.createRow(0);
-            header.createCell(0).setCellValue("学号");
-            header.createCell(1).setCellValue("姓名");
-            header.createCell(2).setCellValue("班级");
+            header.createCell(0).setCellValue(Config.COL_STUDENT_ID);
+            header.createCell(1).setCellValue(Config.COL_NAME);
+            header.createCell(2).setCellValue(Config.COL_CLASS);
             header.createCell(3).setCellValue("奖项");
             header.createCell(4).setCellValue("总奖项数");
             int r = 1;
@@ -172,4 +172,3 @@ public class BuildList {
         }
     }
 }
-
