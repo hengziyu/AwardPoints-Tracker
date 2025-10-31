@@ -1,4 +1,4 @@
-package org.example;
+package org.example.util;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,4 +31,3 @@ public final class LoggerUtil {
         logger.error(message + " | " + ex.getClass().getSimpleName() + ": " + ex.getMessage() + "\n" + sw.toString());
     }
 }
-
