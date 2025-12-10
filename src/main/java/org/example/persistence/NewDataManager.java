@@ -18,6 +18,10 @@ import java.sql.Statement;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
+import java.util.ArrayList;
 
 /**
  * newFile 与 SQLite 管理
@@ -28,6 +32,7 @@ public class NewDataManager {
     private final Map<Long, StudentAwardRecord> recordMap = new HashMap<>();
     private final File excelFile;
     private final File dbFile;
+    private final ObjectMapper mapper = new ObjectMapper();
 
     public NewDataManager(String excelPath, String dbPath) {
         this.excelFile = new File(excelPath);
@@ -37,14 +42,15 @@ public class NewDataManager {
     }
 
     private static String[] buildHeader() {
-        String[] h = new String[6 + 50];
+        String[] h = new String[6];
         h[0] = Config.COL_STUDENT_ID;
         h[1] = Config.COL_NAME;
         h[2] = Config.COL_CLASS;
         h[3] = Config.COL_CERT_TOTAL;
         h[4] = Config.COL_AWARD_TOTAL;
         h[5] = Config.COL_RECORDED_COUNT;
-        for (int i = 0; i < 50; i++) h[6 + i] = Config.COL_AWARD_LABEL_PREFIX + (i + 1);
+        // The 6th column will be for the awards JSON blob
+        h[5] = "awards_json";
         return h;
     }
 
@@ -66,18 +72,24 @@ public class NewDataManager {
         try (Workbook wb = new XSSFWorkbook()) {
             Sheet sheet = wb.createSheet(Config.SHEET_MAIN);
             Row headerRow = sheet.createRow(0);
-            for (int i = 0; i < HEADER.length; i++) headerRow.createCell(i).setCellValue(HEADER[i]);
+            headerRow.createCell(0).setCellValue(Config.COL_STUDENT_ID);
+            headerRow.createCell(1).setCellValue(Config.COL_NAME);
+            headerRow.createCell(2).setCellValue(Config.COL_CLASS);
+            headerRow.createCell(3).setCellValue(Config.COL_CERT_TOTAL);
+            headerRow.createCell(4).setCellValue(Config.COL_AWARD_TOTAL);
+            headerRow.createCell(5).setCellValue(Config.COL_RECORDED_COUNT);
+            headerRow.createCell(6).setCellValue("awards_json");
+
             int rowIndex = 1;
             for (StudentAwardRecord r : recordMap.values()) {
                 Row row = sheet.createRow(rowIndex++);
-                int col = 0;
-                row.createCell(col++).setCellValue(r.getStudentId());
-                row.createCell(col++).setCellValue(r.getName());
-                row.createCell(col++).setCellValue(r.getClassName());
-                row.createCell(col++).setCellValue(r.getCertTotalPoints());
-                row.createCell(col++).setCellValue(r.getAwardTotalPoints());
-                row.createCell(col++).setCellValue(r.getRecordedAwardCount());
-                for (String label : r.getAwardLabels()) row.createCell(col++).setCellValue(label);
+                row.createCell(0).setCellValue(r.getStudentId());
+                row.createCell(1).setCellValue(r.getName());
+                row.createCell(2).setCellValue(r.getClassName());
+                row.createCell(3).setCellValue(r.getCertTotalPoints());
+                row.createCell(4).setCellValue(r.getAwardTotalPoints());
+                row.createCell(5).setCellValue(r.getRecordedAwardCount());
+                row.createCell(6).setCellValue(mapper.writeValueAsString(r.getAwards()));
             }
             try (FileOutputStream fos = new FileOutputStream(excelFile)) {
                 wb.write(fos);
@@ -89,50 +101,46 @@ public class NewDataManager {
 
     private void initDb(String dbPath) {
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath); Statement st = conn.createStatement()) {
-            st.execute("CREATE TABLE IF NOT EXISTS students (student_id INTEGER PRIMARY KEY, cert_total_points REAL DEFAULT 0.0, award_total_points REAL DEFAULT 0.0, recorded_award_count INTEGER DEFAULT 0)");
-            st.execute("CREATE TABLE IF NOT EXISTS award_labels (student_id INTEGER, label_index INTEGER, label TEXT, PRIMARY KEY(student_id,label_index))");
-            st.execute("CREATE TABLE IF NOT EXISTS student_history (id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER, ts INTEGER, cert_total REAL, award_total REAL, recorded_award_count INTEGER)");
-            st.execute("CREATE INDEX IF NOT EXISTS idx_award_labels_sid ON award_labels(student_id)");
-            st.execute("CREATE VIEW IF NOT EXISTS v_student_points AS SELECT s.student_id, s.cert_total_points, s.award_total_points, s.recorded_award_count, (s.cert_total_points + s.award_total_points) AS total_points FROM students s");
-            boolean hasColumn = false;
-            try (ResultSet rs = st.executeQuery("PRAGMA table_info(students)")) {
-                while (rs.next()) { if ("recorded_award_count".equalsIgnoreCase(rs.getString("name"))) { hasColumn = true; break; } }
-            }
-            if (!hasColumn) { try { st.execute("ALTER TABLE students ADD COLUMN recorded_award_count INTEGER DEFAULT 0"); } catch (Exception ignore) {} }
+            st.execute("CREATE TABLE IF NOT EXISTS students (student_id INTEGER PRIMARY KEY, name TEXT, class_name TEXT, cert_total_points REAL DEFAULT 0.0, award_total_points REAL DEFAULT 0.0, recorded_award_count INTEGER DEFAULT 0, awards_json TEXT)");
+            st.execute("DROP TABLE IF EXISTS award_labels"); // Drop obsolete table
+            st.execute("DROP TABLE IF EXISTS student_history"); // Drop obsolete table
+            st.execute("DROP VIEW IF EXISTS v_student_points"); // Drop obsolete view
+
+            // Check and add columns if they don't exist (for migration)
+            addColumnIfNotExists(st, "students", "name", "TEXT");
+            addColumnIfNotExists(st, "students", "class_name", "TEXT");
+            addColumnIfNotExists(st, "students", "awards_json", "TEXT");
+
         } catch (Exception e) {
             LoggerUtil.logException(LOGGER, e, "初始化数据库失败");
         }
     }
 
+    private void addColumnIfNotExists(Statement st, String tableName, String columnName, String columnType) {
+        try {
+            st.executeQuery("SELECT " + columnName + " FROM " + tableName + " LIMIT 1");
+        } catch (Exception e) {
+            try {
+                st.execute("ALTER TABLE " + tableName + " ADD COLUMN " + columnName + " " + columnType);
+            } catch (Exception ex) {
+                // Ignore
+            }
+        }
+    }
+
+
     // 公开 writeDb 以支持批量重建使用
     public void writeDb(StudentAwardRecord r) {
-        String sql = "INSERT INTO students (student_id, cert_total_points, award_total_points, recorded_award_count) VALUES (?,?,?,?) ON CONFLICT(student_id) DO UPDATE SET cert_total_points=excluded.cert_total_points, award_total_points=excluded.award_total_points, recorded_award_count=excluded.recorded_award_count";
+        String sql = "INSERT INTO students (student_id, name, class_name, cert_total_points, award_total_points, recorded_award_count, awards_json) VALUES (?,?,?,?,?,?,?) ON CONFLICT(student_id) DO UPDATE SET name=excluded.name, class_name=excluded.class_name, cert_total_points=excluded.cert_total_points, award_total_points=excluded.award_total_points, recorded_award_count=excluded.recorded_award_count, awards_json=excluded.awards_json";
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getPath()); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, r.getStudentId());
-            ps.setDouble(2, r.getCertTotalPoints());
-            ps.setDouble(3, r.getAwardTotalPoints());
-            ps.setInt(4, r.getRecordedAwardCount());
+            ps.setString(2, r.getName());
+            ps.setString(3, r.getClassName());
+            ps.setDouble(4, r.getCertTotalPoints());
+            ps.setDouble(5, r.getAwardTotalPoints());
+            ps.setInt(6, r.getRecordedAwardCount());
+            ps.setString(7, mapper.writeValueAsString(r.getAwards()));
             ps.executeUpdate();
-            String labelSql = "INSERT INTO award_labels (student_id,label_index,label) VALUES (?,?,?) ON CONFLICT(student_id,label_index) DO UPDATE SET label=excluded.label";
-            try (PreparedStatement lp = conn.prepareStatement(labelSql)) {
-                String[] labels = r.getAwardLabels();
-                for (int i = 0; i < labels.length; i++) {
-                    lp.setLong(1, r.getStudentId());
-                    lp.setInt(2, i);
-                    lp.setString(3, labels[i] == null ? "" : labels[i]);
-                    lp.addBatch();
-                }
-                lp.executeBatch();
-            }
-            // 写入历史记录
-            try (PreparedStatement hp = conn.prepareStatement("INSERT INTO student_history (student_id, ts, cert_total, award_total, recorded_award_count) VALUES (?,?,?,?,?)")) {
-                hp.setLong(1, r.getStudentId());
-                hp.setLong(2, System.currentTimeMillis());
-                hp.setDouble(3, r.getCertTotalPoints());
-                hp.setDouble(4, r.getAwardTotalPoints());
-                hp.setInt(5, r.getRecordedAwardCount());
-                hp.executeUpdate();
-            }
         } catch (Exception e) {
             LoggerUtil.logException(LOGGER, e, "写入数据库失败");
         }
@@ -146,7 +154,7 @@ public class NewDataManager {
             Row header = sheet.getRow(0);
             if (header == null) return;
             recordMap.clear();
-            int colId = 0, colName = 1, colClass = 2, colCert = 3, colAward = 4, colCount = 5;
+            int colId = 0, colName = 1, colClass = 2, colCert = 3, colAward = 4, colCount = 5, colJson = 6;
             for (int r = 1; r <= sheet.getLastRowNum(); r++) {
                 Row row = sheet.getRow(r);
                 if (row == null) continue;
@@ -155,16 +163,16 @@ public class NewDataManager {
                 long sid = (long) cId.getNumericCellValue();
                 String name = getString(row.getCell(colName));
                 String clazz = getString(row.getCell(colClass));
-                double certPts = getNumeric(row.getCell(colCert));
-                double awardPts = getNumeric(row.getCell(colAward));
-                int recCount = (int) getNumeric(row.getCell(colCount));
                 StudentAwardRecord rec = new StudentAwardRecord(sid, name, clazz);
-                rec.addCertTotalPoints(certPts);
-                rec.addAwardTotalPoints(awardPts);
-                for (int i = 0; i < recCount; i++) rec.incrementRecordedAwardCount();
-                for (int i = 0; i < 50; i++) {
-                    Cell c = row.getCell(6 + i);
-                    rec.setAwardLabel(i, c == null ? "" : c.getStringCellValue());
+
+                rec.setCertTotalPoints(getNumeric(row.getCell(colCert)));
+                rec.setAwardTotalPoints(getNumeric(row.getCell(colAward)));
+                rec.setRecordedAwardCount((int) getNumeric(row.getCell(colCount)));
+
+                String json = getString(row.getCell(colJson));
+                if (json != null && !json.isEmpty()) {
+                    List<Map<String, String>> awards = mapper.readValue(json, new TypeReference<>() {});
+                    awards.forEach(award -> rec.addAward(award.get("name"), award.get("image"), award.get("category")));
                 }
                 recordMap.put(sid, rec);
             }
@@ -194,18 +202,14 @@ public class NewDataManager {
                     if (c != null && c.getCellType() == CellType.NUMERIC && (long)c.getNumericCellValue() == r.getStudentId()) { targetRowIndex = i; break; }
                 }
                 Row row = (targetRowIndex == -1) ? sheet.createRow(sheet.getLastRowNum() + 1) : sheet.getRow(targetRowIndex);
-                int col = 0;
-                row.createCell(col++).setCellValue(r.getStudentId());
-                row.createCell(col++).setCellValue(r.getName());
-                row.createCell(col++).setCellValue(r.getClassName());
-                row.createCell(col++).setCellValue(r.getCertTotalPoints());
-                row.createCell(col++).setCellValue(r.getAwardTotalPoints());
-                row.createCell(col++).setCellValue(r.getRecordedAwardCount());
-                String[] labels = r.getAwardLabels();
-                for (int i = 0; i < labels.length; i++) {
-                    Cell lc = row.getCell(col + i); if (lc == null) lc = row.createCell(col + i);
-                    lc.setCellValue(labels[i] == null ? "" : labels[i]);
-                }
+                row.createCell(0).setCellValue(r.getStudentId());
+                row.createCell(1).setCellValue(r.getName());
+                row.createCell(2).setCellValue(r.getClassName());
+                row.createCell(3).setCellValue(r.getCertTotalPoints());
+                row.createCell(4).setCellValue(r.getAwardTotalPoints());
+                row.createCell(5).setCellValue(r.getRecordedAwardCount());
+                row.createCell(6).setCellValue(mapper.writeValueAsString(r.getAwards()));
+
                 try (FileOutputStream fos = new FileOutputStream(excelFile)) { wb.write(fos); }
             }
         } catch (Exception ex) {

@@ -8,6 +8,7 @@ import org.example.model.StudentAwardRecord;
 import org.example.util.LoggerUtil;
 import org.slf4j.Logger;
 import org.example.config.Config;
+import com.fasterxml.jackson.core.type.TypeReference;
 
 import java.io.*;
 import java.util.*;
@@ -112,13 +113,13 @@ public final class SnapshotManager {
         boolean gz = source.getName().endsWith(".gz");
         try (InputStream is = gz ? new GZIPInputStream(new BufferedInputStream(new FileInputStream(source))) : new FileInputStream(source)) {
             JsonNode root = MAPPER.readTree(is);
-            JsonNode records = root.get("records");
-            if (records == null || !records.isArray()) {
+            JsonNode recordsNode = root.get("records");
+            if (recordsNode == null || !recordsNode.isArray()) {
                 LOGGER.error("快照结构无 records 数组");
                 return Optional.empty();
             }
             List<StudentAwardRecord> list = new ArrayList<>();
-            for (JsonNode n : records) {
+            for (JsonNode n : recordsNode) {
                 long sid = n.path("studentId").asLong();
                 String name = n.path("name").asText("");
                 String clazz = n.path("className").asText("");
@@ -126,10 +127,11 @@ public final class SnapshotManager {
                 r.setCertTotalPoints(n.path("certTotalPoints").asDouble(0.0));
                 r.setAwardTotalPoints(n.path("awardTotalPoints").asDouble(0.0));
                 r.setRecordedAwardCount(n.path("recordedAwardCount").asInt(0));
-                JsonNode labels = n.path("labels");
-                if (labels.isArray()) {
-                    int i = 0;
-                    for (JsonNode ln : labels) { if (i < 50) r.setAwardLabel(i++, ln.asText("")); }
+
+                JsonNode awardsNode = n.path("awards");
+                if (awardsNode.isArray()) {
+                    List<Map<String, String>> awards = MAPPER.convertValue(awardsNode, new TypeReference<>() {});
+                    awards.forEach(award -> r.addAward(award.get("name"), award.get("image"), award.get("category")));
                 }
                 list.add(r);
             }
@@ -156,8 +158,11 @@ public final class SnapshotManager {
             node.put("certTotalPoints", r.getCertTotalPoints());
             node.put("awardTotalPoints", r.getAwardTotalPoints());
             node.put("recordedAwardCount", r.getRecordedAwardCount());
-            ArrayNode labels = node.putArray("labels");
-            for (String l : r.getAwardLabels()) labels.add(l == null ? "" : l);
+            ArrayNode awardsNode = node.putArray("awards");
+            r.getAwards().forEach(awardMap -> {
+                ObjectNode awardNode = awardsNode.addObject();
+                awardMap.forEach(awardNode::put);
+            });
         }
         return root;
     }

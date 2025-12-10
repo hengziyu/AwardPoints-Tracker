@@ -1,6 +1,8 @@
 package org.example.model;
 
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 学生奖项记录
@@ -9,7 +11,7 @@ public class StudentAwardRecord {
     private final long studentId;
     private final String name;
     private final String className;
-    private final String[] awardLabels = new String[50];
+    private final List<Map<String, String>> awards = new ArrayList<>();
     private double certTotalPoints = 0.0;
     private double awardTotalPoints = 0.0;
     private int recordedAwardCount = 0;
@@ -18,7 +20,14 @@ public class StudentAwardRecord {
         this.studentId = studentId;
         this.name = name;
         this.className = className;
-        Arrays.fill(awardLabels, "");
+    }
+
+    public void addAward(String awardName, String imageUrl, String category) {
+        this.awards.add(Map.of("name", awardName, "image", imageUrl, "category", category));
+    }
+
+    public List<Map<String, String>> getAwards() {
+        return awards;
     }
 
     public long getStudentId() {
@@ -41,8 +50,20 @@ public class StudentAwardRecord {
         return awardTotalPoints;
     }
 
+    public void setCertTotalPoints(double certTotalPoints) {
+        this.certTotalPoints = certTotalPoints;
+    }
+
+    public void setAwardTotalPoints(double awardTotalPoints) {
+        this.awardTotalPoints = awardTotalPoints;
+    }
+
     public int getRecordedAwardCount() {
         return recordedAwardCount;
+    }
+
+    public void setRecordedAwardCount(int count) {
+        this.recordedAwardCount = count;
     }
 
     public void addCertTotalPoints(double d) {
@@ -62,30 +83,17 @@ public class StudentAwardRecord {
     }
 
     public String getAwardLabel(int i) {
-        return awardLabels[i];
+        if (i >= 0 && i < awards.size()) {
+            return awards.get(i).get("category");
+        }
+        return "";
     }
 
     public void setAwardLabel(int i, String l) {
-        awardLabels[i] = l;
-    }
-
-    public String[] getAwardLabels() {
-        return awardLabels;
-    }
-
-    public void setCertTotalPoints(double v) {
-        this.certTotalPoints = v;
-    }
-
-    public void setAwardTotalPoints(double v) {
-        this.awardTotalPoints = v;
-    }
-
-    public void setRecordedAwardCount(int v) {
-        this.recordedAwardCount = v;
-    }
-
-    public String[] copyAwardLabels() {
-        return awardLabels.clone();
+        if (i >= 0 && i < awards.size()) {
+            Map<String, String> award = new java.util.HashMap<>(awards.get(i));
+            award.put("category", l);
+            awards.set(i, award);
+        }
     }
 }

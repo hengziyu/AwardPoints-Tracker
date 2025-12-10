@@ -12,6 +12,7 @@ import org.example.config.Config;
 import org.example.config.TemplateInitializer;
 import org.example.model.Award;
 import org.example.model.Student;
+import org.example.model.StudentAwardRecord;
 import org.example.persistence.NewDataManager;
 import org.example.startup.StartupIntegrityChecker;
 import org.example.util.LoggerUtil;
@@ -29,16 +30,21 @@ public class StartupService {
     private static final Logger LOGGER = LoggerUtil.getLogger(StartupService.class.getName());
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public StartupResult initialize(DataLoader.Choice choice) {
-        if (choice == DataLoader.Choice.RANDOM) {
-            new BuildList().build(Config.RAW_SOURCE_PATH);
-        } else if (choice == DataLoader.Choice.NEW) {
-        } else if (choice == DataLoader.Choice.LAST) {
-        }
+    public StartupResult initialize() {
         TemplateInitializer.initializeTemplate();
         List<Student> students = loadStudentsFromSummary();
         NewDataManager manager = new NewDataManager(Config.STUDENT_AWARDS_PATH, Config.DB_PATH);
         manager.reloadFromExcel();
+
+        // Sync student list with data manager
+        for (Student student : students) {
+            StudentAwardRecord record = manager.getOrCreateRecord(student.getStudentId(), student.getName(), student.getClassName());
+            // If the record is new, populate it with awards from the student summary
+            if (record.getAwards().isEmpty() && student.getAwards() != null) {
+                student.getAwards().forEach(award -> record.addAward(award.getName(), award.getImageUrl(), ""));
+            }
+        }
+
         StartupIntegrityChecker.runAll(manager, students);
         return new StartupResult(students, manager);
     }
@@ -137,4 +143,3 @@ public class StartupService {
         }
     }
 }
-
