@@ -31,8 +31,8 @@ public final class StartupIntegrityChecker {
     }
 
     private static void checkFiles() {
-        File summary = new File(Config.FILE_PATH);
-        File newFile = new File(Config.NEW_FILE_PATH);
+        File summary = new File(Config.AWARDS_SUMMARY_PATH);
+        File newFile = new File(Config.STUDENT_AWARDS_PATH);
         File db = new File(Config.DB_PATH);
         LOGGER.debug("文件存在性: summary=" + summary.exists() + " newFile=" + newFile.exists() + " db=" + db.exists());
     }

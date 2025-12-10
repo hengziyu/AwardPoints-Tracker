@@ -25,7 +25,7 @@ public final class TemplateInitializer {
     }
 
     private static void ensureNewFile() {
-        File f = new File(Config.NEW_FILE_PATH);
+        File f = new File(Config.STUDENT_AWARDS_PATH);
         if (f.exists()) return;
         try (Workbook wb = new XSSFWorkbook()) {
             Sheet sheet = wb.createSheet(Config.SHEET_MAIN);
@@ -47,7 +47,7 @@ public final class TemplateInitializer {
     }
 
     private static void ensureSummaryFile() {
-        File f = new File(Config.FILE_PATH);
+        File f = new File(Config.AWARDS_SUMMARY_PATH);
         if (f.exists()) return;
         try (Workbook wb = new XSSFWorkbook()) {
             Sheet sheet = wb.createSheet(Config.SHEET_MAIN);

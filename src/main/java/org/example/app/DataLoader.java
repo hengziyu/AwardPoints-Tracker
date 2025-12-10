@@ -51,7 +51,7 @@ public class DataLoader {
                     LOGGER.debug("从新文件加载并生成汇总: " + path);
                     new BuildList().build(path);
                 }
-                case LAST -> LOGGER.debug("从上次文件加载(不重建): " + Config.FILE_PATH);
+                case LAST -> LOGGER.debug("从上次文件加载(不重建): " + Config.AWARDS_SUMMARY_PATH);
                 case RANDOM -> {
                     if (Config.USE_RANDOM_DATA) {
                         LOGGER.debug("使用随机数据构建源文件");

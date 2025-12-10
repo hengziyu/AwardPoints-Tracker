@@ -31,13 +31,13 @@ public class StartupService {
 
     public StartupResult initialize(DataLoader.Choice choice) {
         if (choice == DataLoader.Choice.RANDOM) {
-            new BuildList().build(Config.SOURCE_PATH);
+            new BuildList().build(Config.RAW_SOURCE_PATH);
         } else if (choice == DataLoader.Choice.NEW) {
         } else if (choice == DataLoader.Choice.LAST) {
         }
         TemplateInitializer.initializeTemplate();
         List<Student> students = loadStudentsFromSummary();
-        NewDataManager manager = new NewDataManager(Config.NEW_FILE_PATH, Config.DB_PATH);
+        NewDataManager manager = new NewDataManager(Config.STUDENT_AWARDS_PATH, Config.DB_PATH);
         manager.reloadFromExcel();
         StartupIntegrityChecker.runAll(manager, students);
         return new StartupResult(students, manager);
@@ -45,9 +45,9 @@ public class StartupService {
 
     private List<Student> loadStudentsFromSummary() {
         List<Student> list = new ArrayList<>();
-        File f = new File(Config.FILE_PATH);
+        File f = new File(Config.AWARDS_SUMMARY_PATH);
         if (!f.exists()) {
-            LOGGER.warn("汇总文件不存在: " + Config.FILE_PATH);
+            LOGGER.warn("汇总文件不存在: " + Config.AWARDS_SUMMARY_PATH);
             return list;
         }
         try (FileInputStream fis = new FileInputStream(f); Workbook wb = new XSSFWorkbook(fis)) {

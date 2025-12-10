@@ -72,5 +72,20 @@ public class StudentAwardRecord {
     public String[] getAwardLabels() {
         return awardLabels;
     }
-}
 
+    public void setCertTotalPoints(double v) {
+        this.certTotalPoints = v;
+    }
+
+    public void setAwardTotalPoints(double v) {
+        this.awardTotalPoints = v;
+    }
+
+    public void setRecordedAwardCount(int v) {
+        this.recordedAwardCount = v;
+    }
+
+    public String[] copyAwardLabels() {
+        return awardLabels.clone();
+    }
+}

@@ -22,6 +22,8 @@ public class GuiElements {
     private final ComboBox<String> filterComboBox;
     private final TableView<StudentRow> tableView;
     private final ScrollPane scrollPane;
+    private final Button exportButton; // 新增导出按钮
+    private final Button importButton; // 新增导入按钮
 
     public GuiElements(java.util.function.Consumer<String> searchCallback, java.util.function.Consumer<String> filterCallback) {
         rootPane = new BorderPane();
@@ -39,7 +41,9 @@ public class GuiElements {
             String val = filterComboBox.getSelectionModel().getSelectedItem();
             filterCallback.accept(val);
         });
-        topFrame.getChildren().addAll(searchLabel, searchEntry, searchButton, filterComboBox);
+        exportButton = new Button("导出进度");
+        importButton = new Button("导入进度");
+        topFrame.getChildren().addAll(searchLabel, searchEntry, searchButton, filterComboBox, exportButton, importButton);
         middleFrame = new VBox();
         middleFrame.setPadding(new Insets(8));
         middleFrame.setSpacing(8);
@@ -77,5 +81,8 @@ public class GuiElements {
     public TableView<StudentRow> getTableView() {
         return tableView;
     }
-}
 
+    public Button getExportButton() { return exportButton; }
+
+    public Button getImportButton() { return importButton; }
+}

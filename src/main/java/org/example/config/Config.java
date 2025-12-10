@@ -5,9 +5,9 @@ public final class Config {
     }
 
     // 文件路径
-    public static final String SOURCE_PATH = "Raw_Source.xlsx";
-    public static final String FILE_PATH = "Awards_Summary.xlsx";
-    public static final String NEW_FILE_PATH = "Student_Awards.xlsx";
+    public static final String RAW_SOURCE_PATH = "Raw_Source.xlsx";
+    public static final String AWARDS_SUMMARY_PATH = "Awards_Summary.xlsx";
+    public static final String STUDENT_AWARDS_PATH = "Student_Awards.xlsx";
     public static final String DB_PATH = "student.db";
     public static final String NULL_TEMPLATE_FILE = "null.xlsx"; // 修正与实际文件名一致
 

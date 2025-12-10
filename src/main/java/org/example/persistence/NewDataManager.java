@@ -15,6 +15,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -90,6 +91,9 @@ public class NewDataManager {
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath); Statement st = conn.createStatement()) {
             st.execute("CREATE TABLE IF NOT EXISTS students (student_id INTEGER PRIMARY KEY, cert_total_points REAL DEFAULT 0.0, award_total_points REAL DEFAULT 0.0, recorded_award_count INTEGER DEFAULT 0)");
             st.execute("CREATE TABLE IF NOT EXISTS award_labels (student_id INTEGER, label_index INTEGER, label TEXT, PRIMARY KEY(student_id,label_index))");
+            st.execute("CREATE TABLE IF NOT EXISTS student_history (id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER, ts INTEGER, cert_total REAL, award_total REAL, recorded_award_count INTEGER)");
+            st.execute("CREATE INDEX IF NOT EXISTS idx_award_labels_sid ON award_labels(student_id)");
+            st.execute("CREATE VIEW IF NOT EXISTS v_student_points AS SELECT s.student_id, s.cert_total_points, s.award_total_points, s.recorded_award_count, (s.cert_total_points + s.award_total_points) AS total_points FROM students s");
             boolean hasColumn = false;
             try (ResultSet rs = st.executeQuery("PRAGMA table_info(students)")) {
                 while (rs.next()) { if ("recorded_award_count".equalsIgnoreCase(rs.getString("name"))) { hasColumn = true; break; } }
@@ -100,7 +104,8 @@ public class NewDataManager {
         }
     }
 
-    private void writeDb(StudentAwardRecord r) {
+    // 公开 writeDb 以支持批量重建使用
+    public void writeDb(StudentAwardRecord r) {
         String sql = "INSERT INTO students (student_id, cert_total_points, award_total_points, recorded_award_count) VALUES (?,?,?,?) ON CONFLICT(student_id) DO UPDATE SET cert_total_points=excluded.cert_total_points, award_total_points=excluded.award_total_points, recorded_award_count=excluded.recorded_award_count";
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getPath()); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, r.getStudentId());
@@ -118,6 +123,15 @@ public class NewDataManager {
                     lp.addBatch();
                 }
                 lp.executeBatch();
+            }
+            // 写入历史记录
+            try (PreparedStatement hp = conn.prepareStatement("INSERT INTO student_history (student_id, ts, cert_total, award_total, recorded_award_count) VALUES (?,?,?,?,?)")) {
+                hp.setLong(1, r.getStudentId());
+                hp.setLong(2, System.currentTimeMillis());
+                hp.setDouble(3, r.getCertTotalPoints());
+                hp.setDouble(4, r.getAwardTotalPoints());
+                hp.setInt(5, r.getRecordedAwardCount());
+                hp.executeUpdate();
             }
         } catch (Exception e) {
             LoggerUtil.logException(LOGGER, e, "写入数据库失败");
@@ -197,5 +211,48 @@ public class NewDataManager {
         } catch (Exception ex) {
             LoggerUtil.logException(LOGGER, ex, "刷新 Excel 行失败");
         }
+    }
+
+    public Collection<StudentAwardRecord> getAllRecords() {
+        return recordMap.values();
+    }
+
+    public synchronized void importRecords(Collection<StudentAwardRecord> records, boolean overwriteExisting) {
+        if (overwriteExisting) recordMap.clear();
+        for (StudentAwardRecord r : records) {
+            recordMap.put(r.getStudentId(), r);
+            // 直接持久化（写 DB + Excel）
+            persistRecord(r);
+        }
+    }
+
+    // ================= 新增：为快照重建提供的辅助方法 =================
+
+    public File getExcelFile() { return excelFile; }
+    public File getDbFile() { return dbFile; }
+
+    /**
+     * 清空内存 + 删除现有文件并重新初始化数据库（不生成 Excel，调用者再写入）。
+     */
+    public synchronized void clearAndRecreateStorage() {
+        recordMap.clear();
+        if (excelFile.exists() && !excelFile.delete()) {
+            LOGGER.warn("Excel 文件删除失败: " + excelFile.getAbsolutePath());
+        }
+        if (dbFile.exists() && !dbFile.delete()) {
+            LOGGER.warn("数据库文件删除失败: " + dbFile.getAbsolutePath());
+        }
+        initDb(dbFile.getPath());
+    }
+
+    /**
+     * 批量加载记录（仅写入 DB，最后一次性写 Excel），用于快照导入效率。现有内容应已通过 clearAndRecreateStorage 清空。
+     */
+    public synchronized void bulkLoadRecords(Collection<StudentAwardRecord> records) {
+        for (StudentAwardRecord r : records) {
+            recordMap.put(r.getStudentId(), r);
+            writeDb(r);
+        }
+        saveAll();
     }
 }

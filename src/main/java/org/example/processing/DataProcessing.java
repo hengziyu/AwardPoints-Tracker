@@ -30,9 +30,9 @@ public class DataProcessing {
 
     public List<Student> loadData() {
         List<Student> list = new ArrayList<>();
-        File f = new File(Config.FILE_PATH);
+        File f = new File(Config.AWARDS_SUMMARY_PATH);
         if (!f.exists()) {
-            LOGGER.warn("文件不存在: " + Config.FILE_PATH);
+            LOGGER.warn("文件不存在: " + Config.AWARDS_SUMMARY_PATH);
             return list;
         }
         try (FileInputStream fis = new FileInputStream(f); Workbook wb = new XSSFWorkbook(fis)) {
@@ -69,7 +69,7 @@ public class DataProcessing {
 
     public Map<Long, String[]> loadNewData() {
         Map<Long, String[]> map = new HashMap<>();
-        File f = new File(Config.NEW_FILE_PATH);
+        File f = new File(Config.STUDENT_AWARDS_PATH);
         if (!f.exists()) initNewFile();
         try (FileInputStream fis = new FileInputStream(f); Workbook wb = new XSSFWorkbook(fis)) {
             Sheet sheet = wb.getSheet(Config.SHEET_MAIN);
@@ -117,7 +117,7 @@ public class DataProcessing {
             header.createCell(4).setCellValue(Config.COL_AWARD_TOTAL);
             header.createCell(5).setCellValue(Config.COL_RECORDED_COUNT);
             for (int i = 0; i < 50; i++) header.createCell(6 + i).setCellValue(Config.COL_AWARD_LABEL_PREFIX + (i + 1));
-            try (FileOutputStream fos = new FileOutputStream(Config.NEW_FILE_PATH)) {
+            try (FileOutputStream fos = new FileOutputStream(Config.STUDENT_AWARDS_PATH)) {
                 wb.write(fos);
             }
         } catch (Exception e) {

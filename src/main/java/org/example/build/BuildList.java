@@ -85,7 +85,7 @@ public class BuildList {
                 }
             }
             writeSummary(new ArrayList<>(aggregateMap.values()));
-            LOGGER.info("BuildList: 汇总完成 -> " + Config.FILE_PATH);
+            LOGGER.info("BuildList: 汇总完成 -> " + Config.NULL_TEMPLATE_FILE);
         } catch (Exception e) {
             LOGGER.error("生成过程中出错", e);
         }
@@ -139,7 +139,7 @@ public class BuildList {
                 row.createCell(3).setCellValue(arr.toString());
                 row.createCell(4).setCellValue(s.awards.size());
             }
-            try (FileOutputStream fos = new FileOutputStream(org.example.config.Config.FILE_PATH)) {
+            try (FileOutputStream fos = new FileOutputStream(Config.AWARDS_SUMMARY_PATH)) {
                 wb.write(fos);
             }
         }

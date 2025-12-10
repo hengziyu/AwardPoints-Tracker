@@ -60,6 +60,7 @@ public class AwardDialog {
     private Image nextPreloadedImage;
     private Image prevPreloadedImage;
     private boolean imageLoading = false;
+    private Label selectedCountLabel; // 已选择数量显示
 
     public AwardDialog(Stage owner, Student studentData, NewDataManager newDataManager, AwardDialogListener listener) {
         this.studentData = studentData;
@@ -96,11 +97,12 @@ public class AwardDialog {
         createCategoryButton(topPanel, Config.CATEGORY_COLLEGE);
         createCategoryButton(topPanel, Config.CATEGORY_NONE);
         indexLabel = new Label();
+        selectedCountLabel = new Label();
         Button rotateButton = new Button("翻转");
         rotateButton.setOnAction(e -> rotateImage());
         Button mirrorButton = new Button("镜像");
         mirrorButton.setOnAction(e -> mirrorImage());
-        topPanel.getChildren().addAll(indexLabel, rotateButton, mirrorButton);
+        topPanel.getChildren().addAll(indexLabel, selectedCountLabel, rotateButton, mirrorButton);
         root.setTop(topPanel);
         VBox centerPanel = new VBox(10);
         centerPanel.setAlignment(Pos.CENTER);
@@ -172,6 +174,7 @@ public class AwardDialog {
         } else prevPreloadedImage = null;
         updateButtonStates();
         updateNavigationButtons();
+        updateSelectedCountLabel();
     }
 
     private void adjustImageSize() {
@@ -263,23 +266,41 @@ public class AwardDialog {
         }
     }
 
+    private void updateSelectedCountLabel() {
+        StudentAwardRecord record = newDataManager.getOrCreateRecord(studentData.getStudentId(), studentData.getName(), studentData.getClassName());
+        selectedCountLabel.setText("已选:" + record.getRecordedAwardCount());
+    }
+
     private void updateAwardPoints(String label) {
         StudentAwardRecord record = newDataManager.getOrCreateRecord(studentData.getStudentId(), studentData.getName(), studentData.getClassName());
         String previousLabel = record.getAwardLabel(currentAwardIndex);
+        boolean isToggleOff = previousLabel.equals(label);
         double scoreChange = 0.0;
-        if (previousLabel.equals(label)) {
-            if (label.equals(Config.CATEGORY_CERT)) record.addCertTotalPoints(-SCORE_MAP.get(label));
-            else if (!label.equals(Config.CATEGORY_NONE) && !label.isEmpty())
-                record.addAwardTotalPoints(-SCORE_MAP.get(label));
+        if (isToggleOff) {
+            // 撤销选择
+            if (previousLabel.equals(Config.CATEGORY_CERT)) {
+                record.addCertTotalPoints(-SCORE_MAP.get(previousLabel));
+                scoreChange = -SCORE_MAP.get(previousLabel);
+            } else if (!previousLabel.equals(Config.CATEGORY_NONE) && !previousLabel.isEmpty()) {
+                record.addAwardTotalPoints(-SCORE_MAP.get(previousLabel));
+                scoreChange = -SCORE_MAP.get(previousLabel);
+            }
             record.setAwardLabel(currentAwardIndex, "");
             record.decrementRecordedAwardCount();
         } else {
+            // 切换或新选择
             if (!previousLabel.isEmpty()) {
-                if (previousLabel.equals(Config.CATEGORY_CERT))
+                // 旧标签扣分（“无”没有分值无需处理）
+                if (previousLabel.equals(Config.CATEGORY_CERT)) {
                     record.addCertTotalPoints(-SCORE_MAP.get(previousLabel));
-                else if (!previousLabel.equals(Config.CATEGORY_NONE))
+                } else if (!previousLabel.equals(Config.CATEGORY_NONE)) {
                     record.addAwardTotalPoints(-SCORE_MAP.get(previousLabel));
+                }
+            } else {
+                // 从空到一个新标签（包括“无”）计数+1
+                record.incrementRecordedAwardCount();
             }
+            // 添加新标签分值（“无”不加分）
             if (label.equals(Config.CATEGORY_CERT)) {
                 record.addCertTotalPoints(SCORE_MAP.get(label));
                 scoreChange = SCORE_MAP.get(label);
@@ -287,14 +308,12 @@ public class AwardDialog {
                 record.addAwardTotalPoints(SCORE_MAP.get(label));
                 scoreChange = SCORE_MAP.get(label);
             }
-            if (previousLabel.isEmpty() && !label.equals(Config.CATEGORY_NONE)) { // '无' 不计入
-                record.incrementRecordedAwardCount();
-            }
-            record.setAwardLabel(currentAwardIndex, label.equals(Config.CATEGORY_NONE) ? "" : label);
+            record.setAwardLabel(currentAwardIndex, label); // “无”也存储，便于撤销
         }
         newDataManager.persistRecord(record);
         updateButtonStates();
+        updateSelectedCountLabel();
         if (listener != null) listener.onDataUpdated();
-        LOGGER.debug("学生=" + studentData.getStudentId() + " 奖项索引=" + currentAwardIndex + " 标签=" + label + " 变化=" + scoreChange);
+        LOGGER.debug("学生=" + studentData.getStudentId() + " 奖项索引=" + currentAwardIndex + " 标签=" + label + " 变化=" + scoreChange + (isToggleOff ? " (撤销)" : ""));
     }
 }

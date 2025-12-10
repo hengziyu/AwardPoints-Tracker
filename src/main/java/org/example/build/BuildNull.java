@@ -26,7 +26,7 @@ public class BuildNull {
     private static final int MAX_AWARDS = Config.MAX_AWARDS;
     private static final boolean RANDOM_AWARDS_COUNT = Config.RANDOM_AWARDS_COUNT;
     private static final String NULL_FILE = Config.NULL_TEMPLATE_FILE;
-    private static final String PATH_FILE = Config.SOURCE_PATH;
+    private static final String PATH_FILE = Config.RAW_SOURCE_PATH;
     private final Random random = new Random();
     private int dataRowOffset = 0;
     private Workbook workbook;
